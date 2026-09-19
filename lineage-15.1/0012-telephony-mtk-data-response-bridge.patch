@@ -1,0 +1,101 @@
+--- a/src/java/com/android/internal/telephony/MtkRadioBridge.java
++++ b/src/java/com/android/internal/telephony/MtkRadioBridge.java
+@@ -21,6 +21,7 @@
+ import android.hardware.radio.V1_0.RadioError;
+ import android.hardware.radio.V1_0.RadioResponseInfo;
+ import android.hardware.radio.V1_0.RadioResponseType;
++import android.hardware.radio.V1_0.SetupDataCallResult;
+ import android.os.HwBinder;
+ import android.os.HwBlob;
+ import android.os.HwParcel;
+@@ -59,6 +60,8 @@
+     private static final int SEND_REQUEST_RAW = 0x10d;
+     private static final int SEND_REQUEST_STRINGS = 0x10e;
+     private static final int GET_CURRENT_CALLS_RESPONSE = 0x09;
++    private static final int SETUP_DATA_CALL_RESPONSE = 0x1b;
++    private static final int GET_DATA_CALL_LIST_RESPONSE = 0x36;
+     private static final int DIAL_RESPONSE = 0x0a;
+     private static final int HANGUP_CONNECTION_RESPONSE = 0x0c;
+     private static final int HANGUP_WAITING_OR_BACKGROUND_RESPONSE = 0x0d;
+@@ -76,6 +79,8 @@
+     private static final int GET_MUTE_RESPONSE = 0x34;
+     private static final int EXPLICIT_CALL_TRANSFER_RESPONSE = 0x3f;
+     private static final int SET_CALL_INDICATION_RESPONSE = 0x8d;
++    private static final int SETUP_DATA_CALL_RESPONSE_EX = 0xa2;
++    private static final int GET_DATA_CALL_LIST_RESPONSE_EX = 0xa4;
+     private static final int SEND_REQUEST_RAW_RESPONSE = 0xe8;
+     private static final int SEND_REQUEST_STRINGS_RESPONSE = 0xe9;
+     private static final int INCOMING_CALL_INDICATION = 0x31;
+@@ -305,6 +310,35 @@
+             }
+         }
+ 
++        /*
++         * MTK's MtkSetupDataCallResult is the AOSP result (120 bytes) followed
++         * by a 32-bit RAT field, for a 128-byte HIDL struct.  The vendor
++         * interface is not part of this Oreo source checkout, so decode only
++         * the AOSP prefix and intentionally ignore the extra RAT field.
++         */
++        private static SetupDataCallResult readMtkSetupDataCallResult(
++                HwParcel request) {
++            HwBlob blob = request.readBuffer(128 /* sizeof MtkSetupDataCallResult */);
++            SetupDataCallResult result = new SetupDataCallResult();
++            result.readEmbeddedFromParcel(request, blob, 0);
++            return result;
++        }
++
++        private static ArrayList<SetupDataCallResult> readMtkDataCallList(
++                HwParcel request) {
++            ArrayList<SetupDataCallResult> result = new ArrayList<>();
++            HwBlob vector = request.readBuffer(16 /* sizeof hidl_vec<T> */);
++            int count = vector.getInt32(8 /* offsetof(hidl_vec<T>, mSize) */);
++            HwBlob child = request.readEmbeddedBuffer(
++                    count * 128L, vector.handle(), 0, true /* nullable */);
++            for (int i = 0; i < count; i++) {
++                SetupDataCallResult item = new SetupDataCallResult();
++                item.readEmbeddedFromParcel(request, child, i * 128L);
++                result.add(item);
++            }
++            return result;
++        }
++
+         @Override
+         public void onTransact(int code, HwParcel request, HwParcel reply, int flags)
+                 throws RemoteException {
+@@ -322,6 +356,36 @@
+                     mRil.mRadioResponse.getLastCallFailCauseResponse(responseInfo, failCause);
+                     break;
+                 }
++                case SETUP_DATA_CALL_RESPONSE: {
++                    RadioResponseInfo responseInfo = readBaseResponseInfo(request);
++                    SetupDataCallResult result = new SetupDataCallResult();
++                    result.readFromParcel(request);
++                    mRil.mRadioResponse.setupDataCallResponse(responseInfo, result);
++                    break;
++                }
++                case GET_DATA_CALL_LIST_RESPONSE: {
++                    RadioResponseInfo responseInfo = readBaseResponseInfo(request);
++                    ArrayList<SetupDataCallResult> result =
++                            SetupDataCallResult.readVectorFromParcel(request);
++                    mRil.mRadioResponse.getDataCallListResponse(responseInfo, result);
++                    break;
++                }
++                case SETUP_DATA_CALL_RESPONSE_EX: {
++                    request.enforceInterface(RESPONSE_INTERFACE);
++                    RadioResponseInfo responseInfo = new RadioResponseInfo();
++                    responseInfo.readFromParcel(request);
++                    SetupDataCallResult result = readMtkSetupDataCallResult(request);
++                    mRil.mRadioResponse.setupDataCallResponse(responseInfo, result);
++                    break;
++                }
++                case GET_DATA_CALL_LIST_RESPONSE_EX: {
++                    request.enforceInterface(RESPONSE_INTERFACE);
++                    RadioResponseInfo responseInfo = new RadioResponseInfo();
++                    responseInfo.readFromParcel(request);
++                    mRil.mRadioResponse.getDataCallListResponse(responseInfo,
++                            readMtkDataCallList(request));
++                    break;
++                }
+                 case GET_MUTE_RESPONSE: {
+                     RadioResponseInfo responseInfo = readBaseResponseInfo(request);
+                     mRil.mRadioResponse.getMuteResponse(responseInfo, request.readBool());

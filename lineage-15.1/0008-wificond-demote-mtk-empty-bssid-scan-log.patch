@@ -1,0 +1,29 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: G81EM1 bring-up <g81em1@localhost>
+Date: Wed, 16 Sep 2026 15:20:00 +0300
+Subject: [PATCH] wificond: demote malformed MTK scan entry log
+
+The legacy MT6580 nl80211 driver returns two BSS dump entries without a BSSID
+on each otherwise successful scan. ParseScanResult already rejects only those
+entries and continues processing every valid result, so logging each rejection
+as an error creates misleading recurring noise. Keep the diagnostic at debug
+level without changing scan behavior.
+---
+ scanning/scan_utils.cpp | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/scanning/scan_utils.cpp b/scanning/scan_utils.cpp
+index 28fe206..d771ce2 100644
+--- a/scanning/scan_utils.cpp
++++ b/scanning/scan_utils.cpp
+@@ -133,7 +133,7 @@ bool ScanUtils::ParseScanResult(unique_ptr<const NL80211Packet> packet,
+   if (packet->GetAttribute(NL80211_ATTR_BSS, &bss)) {
+     vector<uint8_t> bssid;
+     if (!bss.GetAttributeValue(NL80211_BSS_BSSID, &bssid)) {
+-      LOG(ERROR) << "Failed to get BSSID from scan result packet";
++      LOG(DEBUG) << "Failed to get BSSID from scan result packet";
+       return false;
+     }
+     uint32_t freq;
+-- 
+2.43.0
