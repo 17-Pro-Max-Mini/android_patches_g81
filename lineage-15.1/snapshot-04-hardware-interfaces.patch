@@ -1,0 +1,24 @@
+diff --git a/graphics/composer/2.1/default/Hwc.cpp b/graphics/composer/2.1/default/Hwc.cpp
+index 862dff138ec795ce8c28139ea5a13694ee249c14..c132434fffa14f1a60d74073995b9204a12bb978 100644
+--- a/graphics/composer/2.1/default/Hwc.cpp
++++ b/graphics/composer/2.1/default/Hwc.cpp
+@@ -21,6 +21,7 @@
+ #include <chrono>
+ #include <type_traits>
+ #include <log/log.h>
++#include <utils/Timers.h>
+ 
+ #include "ComposerClient.h"
+ #include "hardware/hwcomposer.h"
+@@ -293,6 +294,11 @@ void HwcHal::vsyncHook(hwc2_callback_data_t callbackData,
+         hwc2_display_t display, int64_t timestamp)
+ {
+     auto hal = reinterpret_cast<HwcHal*>(callbackData);
++    // The MT6580 HWC reports a zero timestamp. SurfaceFlinger treats repeated
++    // zeroes as duplicate VSYNC events and stops advancing physical frames.
++    if (timestamp <= 0) {
++        timestamp = systemTime(SYSTEM_TIME_MONOTONIC);
++    }
+     auto client = hal->getClient();
+     if (client != nullptr) {
+         client->onVsync(display, timestamp);

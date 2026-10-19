@@ -1,0 +1,57 @@
+diff --git a/Android.mk b/Android.mk
+index 3a6bdd721e88839e1899a2f7495f534be8558bbf..18a203164934d4e04400a16461eb90a9df002df6 100644
+--- a/Android.mk
++++ b/Android.mk
+@@ -92,7 +92,8 @@ LOCAL_STATIC_JAVA_LIBRARIES := \
+     android-support-v7-appcompat \
+     android-support-v7-recyclerview \
+     android-support-v7-palette \
+-    android-support-dynamic-animation
++    android-support-dynamic-animation \
++    libGoogleFeed
+ 
+ LOCAL_SRC_FILES := \
+     $(call all-java-files-under, src) \
+diff --git a/go/src_flags/com/android/launcher3/config/FeatureFlags.java b/go/src_flags/com/android/launcher3/config/FeatureFlags.java
+index b11bb7c6aaba1325a238683318a6c8f8871d23f4..92deec48b7dec0949c25cea87eca9d70350dc39b 100644
+--- a/go/src_flags/com/android/launcher3/config/FeatureFlags.java
++++ b/go/src_flags/com/android/launcher3/config/FeatureFlags.java
+@@ -25,5 +25,7 @@ public final class FeatureFlags extends BaseFlags {
+ 
+     // Features to control Launcher3Go behavior
+     public static final boolean GO_DISABLE_WIDGETS = true;
++    public static final boolean LAUNCHER3_GRADIENT_ALL_APPS = false;
++    public static final boolean LAUNCHER3_PHYSICS = false;
+     public static final boolean LAUNCHER3_SPRING_ICONS = false;
+ }
+diff --git a/src/com/android/launcher3/dynamicui/ColorExtractionService.java b/src/com/android/launcher3/dynamicui/ColorExtractionService.java
+index b9dd3b588f7ff027bea2d05f462fc7599bddfcc2..ecc61be0e9aa00768fce92c8e723ebc67ec5759d 100644
+--- a/src/com/android/launcher3/dynamicui/ColorExtractionService.java
++++ b/src/com/android/launcher3/dynamicui/ColorExtractionService.java
+@@ -16,10 +16,12 @@
+ 
+ package com.android.launcher3.dynamicui;
+ 
++import android.Manifest;
+ import android.annotation.TargetApi;
+ import android.app.WallpaperManager;
+ import android.app.job.JobParameters;
+ import android.app.job.JobService;
++import android.content.pm.PackageManager;
+ import android.graphics.Bitmap;
+ import android.graphics.BitmapFactory;
+ import android.graphics.BitmapRegionDecoder;
+@@ -79,9 +81,11 @@ public class ColorExtractionService extends JobService {
+                         ColorExtractionService.this);
+                 int wallpaperId = ExtractionUtils.getWallpaperId(wallpaperManager);
+ 
++                boolean canReadWallpaper = checkSelfPermission(Manifest.permission.READ_EXTERNAL_STORAGE)
++                        == PackageManager.PERMISSION_GRANTED;
+                 ExtractedColors extractedColors = new ExtractedColors();
+-                if (wallpaperManager.getWallpaperInfo() != null) {
+-                    // We can't extract colors from live wallpapers; always use the default color.
++                if (wallpaperManager.getWallpaperInfo() != null || !canReadWallpaper) {
++                    // Use default colors for live wallpapers or unavailable storage access.
+                     extractedColors.updateHotseatPalette(null);
+ 
+                     if (FeatureFlags.QSB_IN_HOTSEAT || FeatureFlags.LAUNCHER3_GRADIENT_ALL_APPS) {

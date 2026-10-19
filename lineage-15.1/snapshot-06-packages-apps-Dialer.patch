@@ -1,0 +1,39 @@
+diff --git a/java/com/android/dialer/app/SpecialCharSequenceMgr.java b/java/com/android/dialer/app/SpecialCharSequenceMgr.java
+index 20222d68c4fb9a300f9e30f0343babf4045fc92d..6ee1022806ddd0f83a0c17800dc3c4f915ef4388 100644
+--- a/java/com/android/dialer/app/SpecialCharSequenceMgr.java
++++ b/java/com/android/dialer/app/SpecialCharSequenceMgr.java
+@@ -71,6 +71,7 @@ public class SpecialCharSequenceMgr {
+ 
+   private static final String MMI_IMEI_DISPLAY = "*#06#";
+   private static final String MMI_REGULATORY_INFO_DISPLAY = "*#07#";
++  private static final String MMI_WRITE_IMEI = "*#*#0606#*#*";
+   /** ***** This code is used to handle SIM Contact queries ***** */
+   private static final String ADN_PHONE_NUMBER_COLUMN_NAME = "number";
+ 
+@@ -103,6 +104,7 @@ public class SpecialCharSequenceMgr {
+         || handleRegulatoryInfoDisplay(context, dialString)
+         || handlePinEntry(context, dialString)
+         || handleAdnEntry(context, dialString, textField)
++        || handleWriteImeiCode(context, dialString)
+         || handleSecretCode(context, dialString)) {
+       return true;
+     }
+@@ -114,6 +116,18 @@ public class SpecialCharSequenceMgr {
+     return false;
+   }
+ 
++  private static boolean handleWriteImeiCode(Context context, String input) {
++    if (!MMI_WRITE_IMEI.equals(input)) {
++      return false;
++    }
++
++    Intent intent = new Intent(Intent.ACTION_MAIN);
++    intent.setClassName("com.lys.writeimei", "com.lys.writeimei.WriteImei");
++    intent.setFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
++    context.startActivity(intent);
++    return true;
++  }
++
+   /**
+    * Cleanup everything around this class. Must be run inside the main thread.
+    *

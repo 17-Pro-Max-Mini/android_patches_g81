@@ -1,0 +1,21 @@
+diff --git a/services/surfaceflinger/DisplayHardware/HWComposer.cpp b/services/surfaceflinger/DisplayHardware/HWComposer.cpp
+index 3f3c67b1e600e338099b3efa406c252e0601f84a..3e1198a76086a6b27e9b04f48309f835f6d9407a 100644
+--- a/services/surfaceflinger/DisplayHardware/HWComposer.cpp
++++ b/services/surfaceflinger/DisplayHardware/HWComposer.cpp
+@@ -170,6 +170,16 @@ bool HWComposer::onVsync(hwc2_display_t displayId, int64_t timestamp,
+     {
+         Mutex::Autolock _l(mLock);
+ 
++        // This legacy MTK HWC2 implementation reports zero for every VSYNC
++        // timestamp. Feeding those samples to DispSync makes its measured
++        // period zero and eventually triggers an integer divide-by-zero.
++        // Ignore invalid hardware samples and let DispSync use its software
++        // timing model instead. Do not log here: the callback runs every
++        // display period and would flood logd.
++        if (timestamp <= 0) {
++            return false;
++        }
++
+         // There have been reports of HWCs that signal several vsync events
+         // with the same timestamp when turning the display off and on. This
+         // is a bug in the HWC implementation, but filter the extra events

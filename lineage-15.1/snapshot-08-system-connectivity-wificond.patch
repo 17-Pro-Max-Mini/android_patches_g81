@@ -1,0 +1,13 @@
+diff --git a/scanning/scan_utils.cpp b/scanning/scan_utils.cpp
+index dfd051c711619d58c2cbacca1d5c6a384c78b686..39b1cc0ebdc690240d9d0fc7069e88b5928d27d7 100644
+--- a/scanning/scan_utils.cpp
++++ b/scanning/scan_utils.cpp
+@@ -133,7 +133,7 @@ bool ScanUtils::ParseScanResult(unique_ptr<const NL80211Packet> packet,
+   if (packet->GetAttribute(NL80211_ATTR_BSS, &bss)) {
+     vector<uint8_t> bssid;
+     if (!bss.GetAttributeValue(NL80211_BSS_BSSID, &bssid)) {
+-      LOG(ERROR) << "Failed to get BSSID from scan result packet";
++      LOG(DEBUG) << "Failed to get BSSID from scan result packet";
+       return false;
+     }
+     uint32_t freq;

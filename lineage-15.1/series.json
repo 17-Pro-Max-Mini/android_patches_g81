@@ -1,0 +1,88 @@
+[
+  {
+    "project": "device/lineage/sepolicy",
+    "base_revision": "9c28a0dfb91bb468515e123b1aaf3fcfc007b82f",
+    "working_head": "9c28a0dfb91bb468515e123b1aaf3fcfc007b82f",
+    "patch": "snapshot-01-device-lineage-sepolicy.patch",
+    "patch_sha256": "01eeda86082db68675d23928a687885cfab561b5d8f0bdd4e6d1d53c9ddf5ca1",
+    "result_files": {
+      "common/private/backuptool.te": "377b8d248b18591ab8180db9eb8873548b10c788aa5a75b06e1f375a710220b5",
+      "common/private/genfs_contexts": "9d9bad36ddc5efe3cae74fd19a6c59c992aaecb7fd49a45270ad40d05e72e42f",
+      "common/private/recovery.te": "41dc4925a141d4814d063766096ee410a740896f6e0b444d3b33d42fb64947ef"
+    }
+  },
+  {
+    "project": "frameworks/native",
+    "base_revision": "c6d109f4e3cdb41d6a6601b825c420e2731af59a",
+    "working_head": "c6d109f4e3cdb41d6a6601b825c420e2731af59a",
+    "patch": "snapshot-02-frameworks-native.patch",
+    "patch_sha256": "2eaf8f01459d42e27a2d2ca35df0b1d17004fce398309a49015c057868391486",
+    "result_files": {
+      "services/surfaceflinger/DisplayHardware/HWComposer.cpp": "9c3fb99983a369ecc908a14e6d42ba8370e9bbcf15c081101d9bee81bdb89099"
+    }
+  },
+  {
+    "project": "frameworks/opt/telephony",
+    "base_revision": "d0c7c5c638f7686c359bccb52d42c2ba874e32f9",
+    "working_head": "d0c7c5c638f7686c359bccb52d42c2ba874e32f9",
+    "patch": "snapshot-03-frameworks-opt-telephony.patch",
+    "patch_sha256": "5156a6e7387091ff65d58eddaf070fbf0859f4a449bdac421e3e5ee00dd7901b",
+    "result_files": {
+      "src/java/com/android/internal/telephony/RIL.java": "5e62b0dda0443f5d86222c555ee10693be642729ac54834061d6246dad861588",
+      "src/java/com/android/internal/telephony/MtkRadioBridge.java": "69a83feea38e682890cb71de3b06239d5eb2fcbb15e6d18d981383877c635687"
+    }
+  },
+  {
+    "project": "hardware/interfaces",
+    "base_revision": "5f14a29297db529a6f82527d8444af8ff0f65476",
+    "working_head": "5f14a29297db529a6f82527d8444af8ff0f65476",
+    "patch": "snapshot-04-hardware-interfaces.patch",
+    "patch_sha256": "17fd2f1d7f1d947279fe40110f3834a7cf688371e8f456a7b7560dff2893d187",
+    "result_files": {
+      "graphics/composer/2.1/default/Hwc.cpp": "1744180aa970460e0ad2cfdef754d91bf0827480bd767f8e20169b1e1bca3dcc"
+    }
+  },
+  {
+    "project": "lineage-sdk",
+    "base_revision": "d0b959b31d6e952f9a992709685f2f743db05775",
+    "working_head": "d0b959b31d6e952f9a992709685f2f743db05775",
+    "patch": "snapshot-05-lineage-sdk.patch",
+    "patch_sha256": "f4f759602f41b17cafe4d08a6b53dbc0b6d2b9eb674fb56213efeeafe2dc575e",
+    "result_files": {
+      "lineage/lib/main/java/org/lineageos/platform/internal/LineageSystemServer.java": "13eb8067d850670915b9e2c128f718201c40e6e6601c965ea8a18049f8a3a839",
+      "lineage/lib/main/java/org/lineageos/platform/internal/StyleInterfaceService.java": "3d8ed6f3a9c7b3a50635c4ddc768dd7b1251906d082243392b6e8265d4eed5cd"
+    }
+  },
+  {
+    "project": "packages/apps/Dialer",
+    "base_revision": "7ab76598b5514da2403790501957c54bde8ebb51",
+    "working_head": "7ab76598b5514da2403790501957c54bde8ebb51",
+    "patch": "snapshot-06-packages-apps-Dialer.patch",
+    "patch_sha256": "dc587d26f67b135ade1994200cae92f460d80dcc297c7a989dd4641ac4ab07d0",
+    "result_files": {
+      "java/com/android/dialer/app/SpecialCharSequenceMgr.java": "4250435d0ba5f37b18fc6c2bfc53dbf797886ec12d5c319240520b8d676059dd"
+    }
+  },
+  {
+    "project": "packages/apps/Trebuchet",
+    "base_revision": "4d5ab33b74f8b0672b8f45bd2510a6a5cd298943",
+    "working_head": "4d5ab33b74f8b0672b8f45bd2510a6a5cd298943",
+    "patch": "snapshot-07-packages-apps-Trebuchet.patch",
+    "patch_sha256": "2ad600374f185b6e20da05718ae068618cbcd7999482eafb858ecf12c19ba1fe",
+    "result_files": {
+      "Android.mk": "c2d086f53778da75e4f5d7f9dc3de512f74c469a00def30161e704c8862c6373",
+      "go/src_flags/com/android/launcher3/config/FeatureFlags.java": "3fd52368afed25b24ad1409bbd4eeb05f267203588b4ae2faef57b6eeded4d95",
+      "src/com/android/launcher3/dynamicui/ColorExtractionService.java": "115b829caa99329c3ca22446756ea79a53a4cd139dcdf28b515ff1a994e46876"
+    }
+  },
+  {
+    "project": "system/connectivity/wificond",
+    "base_revision": "7b311a98d03975f586e2d673b62ea30b00983158",
+    "working_head": "7b311a98d03975f586e2d673b62ea30b00983158",
+    "patch": "snapshot-08-system-connectivity-wificond.patch",
+    "patch_sha256": "6158a4b4851ee328dbaa5f296cea5e3789f79b335711b2d5456a4a7e68114615",
+    "result_files": {
+      "scanning/scan_utils.cpp": "5324cf9608246e37799af7e889cb7798d9f1c2da901b5e48aa8e59f8d11df36f"
+    }
+  }
+]

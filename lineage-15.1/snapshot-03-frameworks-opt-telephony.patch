@@ -1,0 +1,586 @@
+diff --git a/src/java/com/android/internal/telephony/RIL.java b/src/java/com/android/internal/telephony/RIL.java
+index 3f365df52697adc332d6998ac7bc4bfe6ea066a0..3dd60e7dd347877e9fb0dcfe1a7897409559ec8b 100644
+--- a/src/java/com/android/internal/telephony/RIL.java
++++ b/src/java/com/android/internal/telephony/RIL.java
+@@ -338,6 +338,7 @@ public class RIL extends BaseCommands implements CommandsInterface {
+     OemHookResponse mOemHookResponse;
+     OemHookIndication mOemHookIndication;
+     volatile IOemHook mOemHookProxy = null;
++    final MtkRadioBridge mMtkRadioBridge;
+     final AtomicLong mRadioProxyCookie = new AtomicLong(0);
+     final RadioProxyDeathRecipient mRadioProxyDeathRecipient;
+     final RilHandler mRilHandler;
+@@ -484,6 +485,7 @@ public class RIL extends BaseCommands implements CommandsInterface {
+     protected void resetProxyAndRequestList() {
+         mRadioProxy = null;
+         mOemHookProxy = null;
++        mMtkRadioBridge.reset();
+ 
+         // increment the cookie so that death notification can be ignored
+         mRadioProxyCookie.incrementAndGet();
+@@ -511,6 +513,7 @@ public class RIL extends BaseCommands implements CommandsInterface {
+         }
+ 
+         if (mRadioProxy != null) {
++            mMtkRadioBridge.connect(mRadioProxy.asBinder());
+             return mRadioProxy;
+         }
+ 
+@@ -519,6 +522,7 @@ public class RIL extends BaseCommands implements CommandsInterface {
+             if (mRadioProxy != null) {
+                 mRadioProxy.linkToDeath(mRadioProxyDeathRecipient,
+                         mRadioProxyCookie.incrementAndGet());
++                mMtkRadioBridge.connect(mRadioProxy.asBinder());
+                 mRadioProxy.setResponseFunctions(mRadioResponse, mRadioIndication);
+             } else {
+                 riljLoge("getRadioProxy: mRadioProxy == null");
+@@ -623,6 +627,7 @@ public class RIL extends BaseCommands implements CommandsInterface {
+         mRadioIndication = new RadioIndication(this);
+         mOemHookResponse = new OemHookResponse(this);
+         mOemHookIndication = new OemHookIndication(this);
++        mMtkRadioBridge = new MtkRadioBridge(this);
+         mRilHandler = new RilHandler();
+         mRadioProxyDeathRecipient = new RadioProxyDeathRecipient();
+ 
+@@ -2068,6 +2073,24 @@ public class RIL extends BaseCommands implements CommandsInterface {
+ 
+     @Override
+     public void invokeOemRilRequestRaw(byte[] data, Message response) {
++        IRadio radioProxy = getRadioProxy(null);
++        if (radioProxy != null && mMtkRadioBridge.connect(radioProxy.asBinder())) {
++            RILRequest rr = obtainRequest(RIL_REQUEST_OEM_HOOK_RAW, response,
++                    mRILDefaultWorkSource);
++
++            if (RILJ_LOGD) {
++                riljLog(rr.serialString() + "> " + requestToString(rr.mRequest)
++                        + "[" + IccUtils.bytesToHexString(data) + "]");
++            }
++
++            try {
++                mMtkRadioBridge.sendRequestRaw(rr.mSerial, primitiveArrayToArrayList(data));
++            } catch (RemoteException | RuntimeException e) {
++                handleRadioProxyExceptionForRR(rr, "invokeOemRilRequestRawMtk", e);
++            }
++            return;
++        }
++
+         IOemHook oemHookProxy = getOemHookProxy(response);
+         if (oemHookProxy != null) {
+             RILRequest rr = obtainRequest(RIL_REQUEST_OEM_HOOK_RAW, response,
+@@ -2088,6 +2111,29 @@ public class RIL extends BaseCommands implements CommandsInterface {
+ 
+     @Override
+     public void invokeOemRilRequestStrings(String[] strings, Message result) {
++        IRadio radioProxy = getRadioProxy(null);
++        if (radioProxy != null && mMtkRadioBridge.connect(radioProxy.asBinder())) {
++            RILRequest rr = obtainRequest(RIL_REQUEST_OEM_HOOK_STRINGS, result,
++                    mRILDefaultWorkSource);
++
++            String logStr = "";
++            for (int i = 0; i < strings.length; i++) {
++                logStr = logStr + strings[i] + " ";
++            }
++            if (RILJ_LOGD) {
++                riljLog(rr.serialString() + "> " + requestToString(rr.mRequest) + " strings = "
++                        + logStr);
++            }
++
++            try {
++                mMtkRadioBridge.sendRequestStrings(rr.mSerial,
++                        new ArrayList<String>(Arrays.asList(strings)));
++            } catch (RemoteException | RuntimeException e) {
++                handleRadioProxyExceptionForRR(rr, "invokeOemRilRequestStringsMtk", e);
++            }
++            return;
++        }
++
+         IOemHook oemHookProxy = getOemHookProxy(result);
+         if (oemHookProxy != null) {
+             RILRequest rr = obtainRequest(RIL_REQUEST_OEM_HOOK_STRINGS, result,
+diff --git a/src/java/com/android/internal/telephony/MtkRadioBridge.java b/src/java/com/android/internal/telephony/MtkRadioBridge.java
+new file mode 100644
+index 000000000..9dc0590c8
+--- /dev/null
++++ b/src/java/com/android/internal/telephony/MtkRadioBridge.java
+@@ -0,0 +1,481 @@
++/*
++ * Copyright (C) 2026 The LineageOS Project
++ *
++ * Licensed under the Apache License, Version 2.0 (the "License");
++ * you may not use this file except in compliance with the License.
++ * You may obtain a copy of the License at
++ *
++ *      http://www.apache.org/licenses/LICENSE-2.0
++ *
++ * Unless required by applicable law or agreed to in writing, software
++ * distributed under the License is distributed on an "AS IS" BASIS,
++ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
++ * See the License for the specific language governing permissions and
++ * limitations under the License.
++ */
++
++package com.android.internal.telephony;
++
++import android.hardware.radio.V1_0.Call;
++import android.hardware.radio.V1_0.LastCallFailCauseInfo;
++import android.hardware.radio.V1_0.RadioError;
++import android.hardware.radio.V1_0.RadioResponseInfo;
++import android.hardware.radio.V1_0.RadioResponseType;
++import android.hardware.radio.V1_0.SetupDataCallResult;
++import android.os.HwBinder;
++import android.os.HwBlob;
++import android.os.HwParcel;
++import android.os.IHwBinder;
++import android.os.IHwInterface;
++import android.os.RemoteException;
++import android.telephony.Rlog;
++
++import java.util.ArrayList;
++
++/**
++ * Minimal bridge for the MTK vendor IRadio extensions used by this device.
++ *
++ * MTK Oreo exposes the base AOSP IRadio service and extends the same binder
++ * with sendRequestRaw/sendRequestStrings. AOSP's deprecated IOemHook service
++ * accepts these calls on this device but does not forward them to mtkrild.
++ * Incoming calls also require an MTK indication callback and an explicit
++ * acceptance handshake before the standard call-state indication is emitted.
++ */
++final class MtkRadioBridge {
++    private static final String TAG = "MtkRadioBridge";
++
++    private static final String RADIO_INTERFACE =
++            "vendor.mediatek.hardware.radio@2.0::IRadio";
++    private static final String RESPONSE_INTERFACE =
++            "vendor.mediatek.hardware.radio@2.0::IRadioResponse";
++    private static final String BASE_RESPONSE_INTERFACE =
++            "android.hardware.radio@1.0::IRadioResponse";
++    private static final String INDICATION_INTERFACE =
++            "vendor.mediatek.hardware.radio@2.0::IRadioIndication";
++    private static final String BASE_INDICATION_INTERFACE =
++            "android.hardware.radio@1.0::IRadioIndication";
++
++    private static final int SET_RESPONSE_FUNCTIONS_MTK = 0x89;
++    private static final int SET_CALL_INDICATION = 0x8f;
++    private static final int SEND_REQUEST_RAW = 0x10d;
++    private static final int SEND_REQUEST_STRINGS = 0x10e;
++    private static final int GET_CURRENT_CALLS_RESPONSE = 0x09;
++    private static final int SETUP_DATA_CALL_RESPONSE = 0x1b;
++    private static final int GET_DATA_CALL_LIST_RESPONSE = 0x36;
++    private static final int DIAL_RESPONSE = 0x0a;
++    private static final int HANGUP_CONNECTION_RESPONSE = 0x0c;
++    private static final int HANGUP_WAITING_OR_BACKGROUND_RESPONSE = 0x0d;
++    private static final int HANGUP_FOREGROUND_RESUME_BACKGROUND_RESPONSE = 0x0e;
++    private static final int SWITCH_WAITING_OR_HOLDING_AND_ACTIVE_RESPONSE = 0x0f;
++    private static final int CONFERENCE_RESPONSE = 0x10;
++    private static final int REJECT_CALL_RESPONSE = 0x11;
++    private static final int GET_LAST_CALL_FAIL_CAUSE_RESPONSE = 0x12;
++    private static final int SEND_DTMF_RESPONSE = 0x18;
++    private static final int ACCEPT_CALL_RESPONSE = 0x26;
++    private static final int START_DTMF_RESPONSE = 0x2f;
++    private static final int STOP_DTMF_RESPONSE = 0x30;
++    private static final int SEPARATE_CONNECTION_RESPONSE = 0x32;
++    private static final int SET_MUTE_RESPONSE = 0x33;
++    private static final int GET_MUTE_RESPONSE = 0x34;
++    private static final int EXPLICIT_CALL_TRANSFER_RESPONSE = 0x3f;
++    private static final int SET_CALL_INDICATION_RESPONSE = 0x8d;
++    private static final int SETUP_DATA_CALL_RESPONSE_EX = 0xa2;
++    private static final int GET_DATA_CALL_LIST_RESPONSE_EX = 0xa4;
++    private static final int SEND_REQUEST_RAW_RESPONSE = 0xe8;
++    private static final int SEND_REQUEST_STRINGS_RESPONSE = 0xe9;
++    private static final int INCOMING_CALL_INDICATION = 0x31;
++    private static final int RADIO_STATE_CHANGED = 0x01;
++
++    private static final int RIL_REQUEST_SET_CALL_INDICATION = 2016;
++    private static final int INCOMING_CALL_NOTIFICATION_SIZE = 112;
++    private static final long CALL_ID_OFFSET = 0;
++    private static final long SEQUENCE_NUMBER_OFFSET = 64;
++
++    private final RIL mRil;
++    private final MtkResponse mResponse;
++    private final MtkIndication mIndication;
++
++    private IHwBinder mRadioBinder;
++
++    MtkRadioBridge(RIL ril) {
++        mRil = ril;
++        mResponse = new MtkResponse(ril);
++        mIndication = new MtkIndication(this);
++    }
++
++    synchronized void reset() {
++        mRadioBinder = null;
++    }
++
++    synchronized boolean connect(IHwBinder radioBinder) {
++        if (radioBinder == null) {
++            return false;
++        }
++        if (mRadioBinder == radioBinder) {
++            return true;
++        }
++
++        HwParcel request = new HwParcel();
++        HwParcel reply = new HwParcel();
++        try {
++            request.writeInterfaceToken(RADIO_INTERFACE);
++            request.writeStrongBinder(mResponse);
++            request.writeStrongBinder(mIndication);
++            radioBinder.transact(SET_RESPONSE_FUNCTIONS_MTK, request, reply, 0);
++            reply.verifySuccess();
++            request.releaseTemporaryStorage();
++            mRadioBinder = radioBinder;
++            Rlog.d(TAG, "Connected to MTK vendor IRadio OEM request extension");
++            return true;
++        } catch (RemoteException | RuntimeException e) {
++            mRadioBinder = null;
++            Rlog.w(TAG, "MTK vendor IRadio extension unavailable", e);
++            return false;
++        } finally {
++            reply.release();
++        }
++    }
++
++    synchronized void sendRequestRaw(int serial, ArrayList<Byte> data) throws RemoteException {
++        HwParcel request = new HwParcel();
++        HwParcel reply = new HwParcel();
++        try {
++            request.writeInterfaceToken(RADIO_INTERFACE);
++            request.writeInt32(serial);
++            request.writeInt8Vector(data);
++            mRadioBinder.transact(SEND_REQUEST_RAW, request, reply, IHwBinder.FLAG_ONEWAY);
++            request.releaseTemporaryStorage();
++        } catch (RemoteException | RuntimeException e) {
++            mRadioBinder = null;
++            throw e;
++        } finally {
++            reply.release();
++        }
++    }
++
++    synchronized void sendRequestStrings(int serial, ArrayList<String> data)
++            throws RemoteException {
++        HwParcel request = new HwParcel();
++        HwParcel reply = new HwParcel();
++        try {
++            request.writeInterfaceToken(RADIO_INTERFACE);
++            request.writeInt32(serial);
++            request.writeStringVector(data);
++            mRadioBinder.transact(SEND_REQUEST_STRINGS, request, reply, IHwBinder.FLAG_ONEWAY);
++            request.releaseTemporaryStorage();
++        } catch (RemoteException | RuntimeException e) {
++            mRadioBinder = null;
++            throw e;
++        } finally {
++            reply.release();
++        }
++    }
++
++    private synchronized void allowIncomingCall(String callIdString, String seqNoString) {
++        if (mRadioBinder == null) {
++            Rlog.w(TAG, "Cannot acknowledge incoming call without MTK radio connection");
++            return;
++        }
++
++        final int callId;
++        final int seqNo;
++        try {
++            callId = Integer.parseInt(callIdString);
++            seqNo = Integer.parseInt(seqNoString);
++        } catch (NumberFormatException e) {
++            Rlog.w(TAG, "Invalid MTK incoming call identifiers", e);
++            return;
++        }
++
++        int serial = mRil.obtainRequestSerial(RIL_REQUEST_SET_CALL_INDICATION, null,
++                mRil.mRILDefaultWorkSource);
++        HwParcel request = new HwParcel();
++        HwParcel reply = new HwParcel();
++        try {
++            request.writeInterfaceToken(RADIO_INTERFACE);
++            request.writeInt32(serial);
++            request.writeInt32(0); // 0 allows the incoming call; 1 rejects it.
++            request.writeInt32(callId);
++            request.writeInt32(seqNo);
++            mRadioBinder.transact(SET_CALL_INDICATION, request, reply, IHwBinder.FLAG_ONEWAY);
++            request.releaseTemporaryStorage();
++            Rlog.d(TAG, "Acknowledged MTK incoming call indication");
++        } catch (RemoteException | RuntimeException e) {
++            mRadioBinder = null;
++            completeFailedRequest(serial);
++            Rlog.e(TAG, "Failed to acknowledge MTK incoming call indication", e);
++        } finally {
++            reply.release();
++        }
++    }
++
++    private void completeFailedRequest(int serial) {
++        RadioResponseInfo responseInfo = new RadioResponseInfo();
++        responseInfo.serial = serial;
++        responseInfo.type = RadioResponseType.SOLICITED;
++        responseInfo.error = RadioError.RADIO_NOT_AVAILABLE;
++        RILRequest rr = mRil.processResponse(responseInfo);
++        if (rr != null) {
++            mRil.processResponseDone(rr, responseInfo, null);
++        }
++    }
++
++    private static String readEmbeddedString(HwBlob blob, long offset) {
++        // This MT6580 radio marshals the string payload correctly, but reports
++        // mismatched child-buffer lengths for this vendor notification. The
++        // generated HIDL pinning read consequently throws before the call can
++        // be acknowledged. HwBlob#getString already copies the value into a
++        // Java String, which is all this bridge needs for callId and seqNo.
++        return blob.getString(offset);
++    }
++
++    private abstract static class Callback extends HwBinder {
++        @Override
++        public IHwInterface queryLocalInterface(String descriptor) {
++            return null;
++        }
++
++        @Override
++        public boolean linkToDeath(IHwBinder.DeathRecipient recipient, long cookie) {
++            return true;
++        }
++
++        @Override
++        public boolean unlinkToDeath(IHwBinder.DeathRecipient recipient) {
++            return true;
++        }
++    }
++
++    private static final class MtkResponse extends Callback {
++        private final RIL mRil;
++
++        MtkResponse(RIL ril) {
++            mRil = ril;
++        }
++
++        private RadioResponseInfo readBaseResponseInfo(HwParcel request) {
++            request.enforceInterface(BASE_RESPONSE_INTERFACE);
++            RadioResponseInfo responseInfo = new RadioResponseInfo();
++            responseInfo.readFromParcel(request);
++            return responseInfo;
++        }
++
++        private void forwardVoidCallResponse(int code, HwParcel request) {
++            RadioResponseInfo responseInfo = readBaseResponseInfo(request);
++            switch (code) {
++                case DIAL_RESPONSE:
++                    mRil.mRadioResponse.dialResponse(responseInfo);
++                    break;
++                case HANGUP_CONNECTION_RESPONSE:
++                    mRil.mRadioResponse.hangupConnectionResponse(responseInfo);
++                    break;
++                case HANGUP_WAITING_OR_BACKGROUND_RESPONSE:
++                    mRil.mRadioResponse.hangupWaitingOrBackgroundResponse(responseInfo);
++                    break;
++                case HANGUP_FOREGROUND_RESUME_BACKGROUND_RESPONSE:
++                    mRil.mRadioResponse.hangupForegroundResumeBackgroundResponse(responseInfo);
++                    break;
++                case SWITCH_WAITING_OR_HOLDING_AND_ACTIVE_RESPONSE:
++                    mRil.mRadioResponse.switchWaitingOrHoldingAndActiveResponse(responseInfo);
++                    break;
++                case CONFERENCE_RESPONSE:
++                    mRil.mRadioResponse.conferenceResponse(responseInfo);
++                    break;
++                case REJECT_CALL_RESPONSE:
++                    mRil.mRadioResponse.rejectCallResponse(responseInfo);
++                    break;
++                case SEND_DTMF_RESPONSE:
++                    mRil.mRadioResponse.sendDtmfResponse(responseInfo);
++                    break;
++                case ACCEPT_CALL_RESPONSE:
++                    mRil.mRadioResponse.acceptCallResponse(responseInfo);
++                    break;
++                case START_DTMF_RESPONSE:
++                    mRil.mRadioResponse.startDtmfResponse(responseInfo);
++                    break;
++                case STOP_DTMF_RESPONSE:
++                    mRil.mRadioResponse.stopDtmfResponse(responseInfo);
++                    break;
++                case SEPARATE_CONNECTION_RESPONSE:
++                    mRil.mRadioResponse.separateConnectionResponse(responseInfo);
++                    break;
++                case SET_MUTE_RESPONSE:
++                    mRil.mRadioResponse.setMuteResponse(responseInfo);
++                    break;
++                case EXPLICIT_CALL_TRANSFER_RESPONSE:
++                    mRil.mRadioResponse.explicitCallTransferResponse(responseInfo);
++                    break;
++                default:
++                    throw new IllegalArgumentException("Unexpected call response: " + code);
++            }
++        }
++
++        /*
++         * MTK's MtkSetupDataCallResult is the AOSP result (120 bytes) followed
++         * by a 32-bit RAT field, for a 128-byte HIDL struct.  The vendor
++         * interface is not part of this Oreo source checkout, so decode only
++         * the AOSP prefix and intentionally ignore the extra RAT field.
++         */
++        private static SetupDataCallResult readMtkSetupDataCallResult(
++                HwParcel request) {
++            HwBlob blob = request.readBuffer(128 /* sizeof MtkSetupDataCallResult */);
++            SetupDataCallResult result = new SetupDataCallResult();
++            result.readEmbeddedFromParcel(request, blob, 0);
++            return result;
++        }
++
++        private static ArrayList<SetupDataCallResult> readMtkDataCallList(
++                HwParcel request) {
++            ArrayList<SetupDataCallResult> result = new ArrayList<>();
++            HwBlob vector = request.readBuffer(16 /* sizeof hidl_vec<T> */);
++            int count = vector.getInt32(8 /* offsetof(hidl_vec<T>, mSize) */);
++            HwBlob child = request.readEmbeddedBuffer(
++                    count * 128L, vector.handle(), 0, true /* nullable */);
++            for (int i = 0; i < count; i++) {
++                SetupDataCallResult item = new SetupDataCallResult();
++                item.readEmbeddedFromParcel(request, child, i * 128L);
++                result.add(item);
++            }
++            return result;
++        }
++
++        @Override
++        public void onTransact(int code, HwParcel request, HwParcel reply, int flags)
++                throws RemoteException {
++            switch (code) {
++                case GET_CURRENT_CALLS_RESPONSE: {
++                    RadioResponseInfo responseInfo = readBaseResponseInfo(request);
++                    ArrayList<Call> calls = Call.readVectorFromParcel(request);
++                    mRil.mRadioResponse.getCurrentCallsResponse(responseInfo, calls);
++                    break;
++                }
++                case GET_LAST_CALL_FAIL_CAUSE_RESPONSE: {
++                    RadioResponseInfo responseInfo = readBaseResponseInfo(request);
++                    LastCallFailCauseInfo failCause = new LastCallFailCauseInfo();
++                    failCause.readFromParcel(request);
++                    mRil.mRadioResponse.getLastCallFailCauseResponse(responseInfo, failCause);
++                    break;
++                }
++                case SETUP_DATA_CALL_RESPONSE: {
++                    RadioResponseInfo responseInfo = readBaseResponseInfo(request);
++                    SetupDataCallResult result = new SetupDataCallResult();
++                    result.readFromParcel(request);
++                    mRil.mRadioResponse.setupDataCallResponse(responseInfo, result);
++                    break;
++                }
++                case GET_DATA_CALL_LIST_RESPONSE: {
++                    RadioResponseInfo responseInfo = readBaseResponseInfo(request);
++                    ArrayList<SetupDataCallResult> result =
++                            SetupDataCallResult.readVectorFromParcel(request);
++                    mRil.mRadioResponse.getDataCallListResponse(responseInfo, result);
++                    break;
++                }
++                case SETUP_DATA_CALL_RESPONSE_EX: {
++                    request.enforceInterface(RESPONSE_INTERFACE);
++                    RadioResponseInfo responseInfo = new RadioResponseInfo();
++                    responseInfo.readFromParcel(request);
++                    SetupDataCallResult result = readMtkSetupDataCallResult(request);
++                    mRil.mRadioResponse.setupDataCallResponse(responseInfo, result);
++                    break;
++                }
++                case GET_DATA_CALL_LIST_RESPONSE_EX: {
++                    request.enforceInterface(RESPONSE_INTERFACE);
++                    RadioResponseInfo responseInfo = new RadioResponseInfo();
++                    responseInfo.readFromParcel(request);
++                    mRil.mRadioResponse.getDataCallListResponse(responseInfo,
++                            readMtkDataCallList(request));
++                    break;
++                }
++                case GET_MUTE_RESPONSE: {
++                    RadioResponseInfo responseInfo = readBaseResponseInfo(request);
++                    mRil.mRadioResponse.getMuteResponse(responseInfo, request.readBool());
++                    break;
++                }
++                case DIAL_RESPONSE:
++                case HANGUP_CONNECTION_RESPONSE:
++                case HANGUP_WAITING_OR_BACKGROUND_RESPONSE:
++                case HANGUP_FOREGROUND_RESUME_BACKGROUND_RESPONSE:
++                case SWITCH_WAITING_OR_HOLDING_AND_ACTIVE_RESPONSE:
++                case CONFERENCE_RESPONSE:
++                case REJECT_CALL_RESPONSE:
++                case SEND_DTMF_RESPONSE:
++                case ACCEPT_CALL_RESPONSE:
++                case START_DTMF_RESPONSE:
++                case STOP_DTMF_RESPONSE:
++                case SEPARATE_CONNECTION_RESPONSE:
++                case SET_MUTE_RESPONSE:
++                case EXPLICIT_CALL_TRANSFER_RESPONSE:
++                    forwardVoidCallResponse(code, request);
++                    break;
++                case SET_CALL_INDICATION_RESPONSE: {
++                    request.enforceInterface(RESPONSE_INTERFACE);
++                    RadioResponseInfo responseInfo = new RadioResponseInfo();
++                    responseInfo.readFromParcel(request);
++                    RILRequest rr = mRil.processResponse(responseInfo);
++                    if (rr != null) {
++                        mRil.processResponseDone(rr, responseInfo, null);
++                    }
++                    break;
++                }
++                case SEND_REQUEST_RAW_RESPONSE: {
++                    request.enforceInterface(RESPONSE_INTERFACE);
++                    RadioResponseInfo responseInfo = new RadioResponseInfo();
++                    responseInfo.readFromParcel(request);
++                    ArrayList<Byte> data = request.readInt8Vector();
++                    RILRequest rr = mRil.processResponse(responseInfo);
++                    if (rr != null) {
++                        byte[] ret = null;
++                        if (responseInfo.error == RadioError.NONE) {
++                            ret = RIL.arrayListToPrimitiveArray(data);
++                            RadioResponse.sendMessageResponse(rr.mResult, ret);
++                        }
++                        mRil.processResponseDone(rr, responseInfo, ret);
++                    }
++                    break;
++                }
++                case SEND_REQUEST_STRINGS_RESPONSE: {
++                    request.enforceInterface(RESPONSE_INTERFACE);
++                    RadioResponseInfo responseInfo = new RadioResponseInfo();
++                    responseInfo.readFromParcel(request);
++                    ArrayList<String> data = request.readStringVector();
++                    RadioResponse.responseStringArrayList(mRil, responseInfo, data);
++                    break;
++                }
++                default:
++                    break;
++            }
++        }
++    }
++
++    private static final class MtkIndication extends Callback {
++        private final MtkRadioBridge mBridge;
++
++        MtkIndication(MtkRadioBridge bridge) {
++            mBridge = bridge;
++        }
++
++        @Override
++        public void onTransact(int code, HwParcel request, HwParcel reply, int flags) {
++            if (code == RADIO_STATE_CHANGED) {
++                request.enforceInterface(BASE_INDICATION_INTERFACE);
++                int indicationType = request.readInt32();
++                int radioState = request.readInt32();
++                mBridge.mRil.mRadioIndication.radioStateChanged(indicationType, radioState);
++                return;
++            }
++
++            if (code != INCOMING_CALL_INDICATION) {
++                return;
++            }
++
++            request.enforceInterface(INDICATION_INTERFACE);
++            int indicationType = request.readInt32();
++            HwBlob notification = request.readBuffer(INCOMING_CALL_NOTIFICATION_SIZE);
++            String callId = readEmbeddedString(notification, CALL_ID_OFFSET);
++            String seqNo = readEmbeddedString(notification, SEQUENCE_NUMBER_OFFSET);
++
++            mBridge.mRil.processIndication(indicationType);
++            mBridge.allowIncomingCall(callId, seqNo);
++        }
++    }
++}

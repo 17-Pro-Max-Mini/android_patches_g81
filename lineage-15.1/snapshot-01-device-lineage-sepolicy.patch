@@ -1,0 +1,33 @@
+diff --git a/common/private/backuptool.te b/common/private/backuptool.te
+index f5a9b2df8a2a23034d689881da8a0838ccbf03b7..29a1ab326b8ea765e717b2f6a355f323127177ce 100644
+--- a/common/private/backuptool.te
++++ b/common/private/backuptool.te
+@@ -1,5 +1,5 @@
+ type backuptool, domain, coredomain;
+ 
+-permissive backuptool;
++userdebug_or_eng(`permissive backuptool;')
+ 
+ neverallow { domain -update_engine } backuptool:process transition;
+diff --git a/common/private/genfs_contexts b/common/private/genfs_contexts
+index 0c5c54a43bfece1f78cdb763dc8654500bc3f008..da79607b3b673cb3548a4358bf7e8d3aaf8fd308 100644
+--- a/common/private/genfs_contexts
++++ b/common/private/genfs_contexts
+@@ -1,3 +1,2 @@
+ genfscon exfat / u:object_r:vfat:s0
+-genfscon fuseblk / u:object_r:vfat:s0
+ genfscon sdfat / u:object_r:vfat:s0
+diff --git a/common/private/recovery.te b/common/private/recovery.te
+index 372df898a771d7d1a6def95b816375488ac3873a..3454ce43cc338f1a3c6d4de429b91f3f19c0c09c 100644
+--- a/common/private/recovery.te
++++ b/common/private/recovery.te
+@@ -5,7 +5,9 @@ recovery_only(`
+ get_prop(recovery, sf_lcd_density_prop)
+ r_dir_file(recovery, pstorefs)
+ unix_socket_connect(recovery, vold, vold)
++userdebug_or_eng(`
+ allow recovery system_file:dir mounton;
++')
+ 
+ # Secure adb (setup_adbd)
+ allow adbd adb_keys_file:dir search;
