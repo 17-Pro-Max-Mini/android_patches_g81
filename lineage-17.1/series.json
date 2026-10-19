@@ -1,0 +1,146 @@
+[
+  {
+    "project": "frameworks/av",
+    "base_revision": "5916abb48c25f4cef893b1ed8116bba898619040",
+    "working_head": "5916abb48c25f4cef893b1ed8116bba898619040",
+    "patch": "01-frameworks-av.patch",
+    "patch_sha256": "d7ab0bbd32f74af6cc3a32fd2106b23969db195068e59e395e5e5635d2f1837a",
+    "result_files": {
+      "media/codec2/vndk/C2AllocatorGralloc.cpp": "5505c70b5c6e29c99f1793006112483c96b092834cfde77e45d31231ad80f67a",
+      "services/mediacodec/seccomp_policy/mediacodec-arm.policy": "530d8b2212a8cd858e26276b93a0748203b39cd34c9ff9c3cad813d98ed51339"
+    }
+  },
+  {
+    "project": "frameworks/base",
+    "base_revision": "c765436db4c14f80663cbb5720de16c80cee75e7",
+    "working_head": "c765436db4c14f80663cbb5720de16c80cee75e7",
+    "patch": "02-frameworks-base.patch",
+    "patch_sha256": "048aeb1b2b5d237b7d0ea899d6ec4d6c83b2f980e7f9685537e75aa27fd3fd73",
+    "result_files": {
+      "packages/SystemUI/res/values/dimens.xml": "e71092d267057fa8e3dc355438ea5f5d88381791ca332eaefff6aa2f46aa1eea",
+      "packages/SystemUI/src/com/android/systemui/screenrecord/RecordingService.java": "6f00a06e0324c9fb1addb80d43cb3f93286005286da627a5f81872d1f2fe56bf",
+      "services/core/java/com/android/server/VibratorService.java": "8d58854bc4a3be6a29de958989ac7d5359666e0b92734f74afaee83fed135b1d",
+      "services/core/java/com/android/server/display/VirtualDisplayAdapter.java": "a7edbd538efbabcfa66f57d35e05577de1bfeb7f0f2b27b60b59605c5eb2a643",
+      "services/core/java/com/android/server/trust/TrustManagerService.java": "b4828ed6220915d40dfdbbb01b87552fd958d7afd80e193061eec2aee947ee45",
+      "services/core/java/com/android/server/wm/InputMonitor.java": "0084ad9c5521483e9a690ff48685985a0a93a2fb0062c4b9e38d0f3e1a78be74",
+      "services/core/java/com/android/server/wm/TaskSnapshotSurface.java": "21e5d2e0ea856e0ba074a9149cd1d9c390b0b6927ef5a627c666f62c438995bb"
+    }
+  },
+  {
+    "project": "frameworks/native",
+    "base_revision": "6559410fe193badd298f2535b79dd5cefd038e11",
+    "working_head": "6559410fe193badd298f2535b79dd5cefd038e11",
+    "patch": "03-frameworks-native.patch",
+    "patch_sha256": "df2693fc38b983e45193a96dbc5829ed71035a2eda5976f54016b74278ce028b",
+    "result_files": {
+      "libs/gui/bufferqueue/1.0/Conversion.cpp": "0820f7d01380e6cc3ca4d882a40e852b4cbf45b7a92c1d35ef4670bd6458c662",
+      "services/surfaceflinger/DisplayHardware/HWComposer.cpp": "8c57f59c53234193da5f2704723857d158ec0952d6f105ef48f28cffc01990ff"
+    }
+  },
+  {
+    "project": "frameworks/opt/net/wifi",
+    "base_revision": "b4598f9e598b045ba8e70e7aa8a47fae34609b9f",
+    "working_head": "b4598f9e598b045ba8e70e7aa8a47fae34609b9f",
+    "patch": "04-frameworks-opt-net-wifi.patch",
+    "patch_sha256": "49d3cfcdc2fcb5281794a4a5294393643cc54697c170ad99275cd94749ae236e",
+    "result_files": {
+      "service/java/com/android/server/wifi/HostapdHal.java": "221b13b81a0b8c9e4c7269c976af90b221644dc371bdd120b42965dcf9076097",
+      "tests/wifitests/src/com/android/server/wifi/HostapdHalTest.java": "dd3842ac2c09da4d83bcf944003917f18a9c090d15aee3b50c57985042a9e023"
+    }
+  },
+  {
+    "project": "frameworks/opt/telephony",
+    "base_revision": "2e3bcc16d01cd037b1476349bf58f9757164f539",
+    "working_head": "2fe1a753687f05a6f969dae512ca2300721913dd",
+    "patch": "05-frameworks-opt-telephony.patch",
+    "patch_sha256": "9b3bff2b8e90ddbabfa4998833613f0c529697c0e8f14e474b94453c9d2edcdd",
+    "result_files": {
+      "src/java/com/android/internal/telephony/MtkRadioBridge.java": "e0d4429796a91d371c4d4804f8f2ffa590711b5a07060df0ba7f2fc5d97e8296",
+      "src/java/com/android/internal/telephony/RIL.java": "52c24f9a6808b33e2689d546d4c194cdc184a3abe7165af9fca23073c4049fd7"
+    }
+  },
+  {
+    "project": "hardware/interfaces",
+    "base_revision": "02951860e9c95f19384fa07522925537d8c17a18",
+    "working_head": "02951860e9c95f19384fa07522925537d8c17a18",
+    "patch": "06-hardware-interfaces.patch",
+    "patch_sha256": "4eccb6d9719164cbf657203c82f60c44a2f65bafeb2dfa1947bc3e7fd97edf45",
+    "result_files": {
+      "camera/provider/2.4/default/android.hardware.camera.provider@2.4-service.rc": "938ba767e862bbde2d18b414a8cf7b54a21ab8b121d746a90577e29943401f2a",
+      "camera/provider/2.4/default/service.cpp": "89793604602f1324d4fb220cb1c4c5732979e8b4def41b38cabbbe4687f5c9bc",
+      "graphics/composer/2.1/utils/passthrough/include/composer-passthrough/2.1/HwcHal.h": "71cbe63331e8a1588b00e4e55629b4ffa50728ebc244b36c7862484ea49fe292",
+      "graphics/composer/2.1/default/legacy_oreo/Android.bp": "9e7db1760ce3667b41acf78316543142d12da98cfefeccaf5b601631fc058418",
+      "graphics/composer/2.1/default/legacy_oreo/ComposerBase.h": "68602c2fa5b40ab7e4861b8002f2f027880dbed9ecbad2ea150f1f758842a37e",
+      "graphics/composer/2.1/default/legacy_oreo/ComposerClient.cpp": "6affe8a0c151b5889218a91be9596eefc74200d8a4a2d83f530f8b524deec79d",
+      "graphics/composer/2.1/default/legacy_oreo/ComposerClient.h": "897411b4ea73afacf3655e680b84094091c401e0a3dba2fbf18463d15a5030b5",
+      "graphics/composer/2.1/default/legacy_oreo/Hwc.cpp": "1744180aa970460e0ad2cfdef754d91bf0827480bd767f8e20169b1e1bca3dcc",
+      "graphics/composer/2.1/default/legacy_oreo/Hwc.h": "9424116b9bf47cffd76b234d42c5356205f172f5ffe1b0c8cd4c25f0a3e1a241",
+      "graphics/composer/2.1/default/legacy_oreo/IComposerCommandBuffer.h": "231011dbc3ca61060d365025075c98678c3b57ce6e84aa0929c4e19d2192b9bc"
+    }
+  },
+  {
+    "project": "lineage-sdk",
+    "base_revision": "ac52632b0573ffc07735006f09408f6ae9c5094e",
+    "working_head": "1c8abe8e7d5e604515c2bb655065d98b3bff9c3f",
+    "patch": "07-lineage-sdk.patch",
+    "patch_sha256": "d81adbc45e20a422a11ea4e77c091db8553f466d91f867caedb0cbc649505626",
+    "result_files": {
+      "packages/LineageSettingsProvider/res/values/defaults.xml": "37ce1d6da052967649d84abdd0e17dd48022fa6fcb2069bdac9c2a4cc1e9f897",
+      "packages/LineageSettingsProvider/src/org/lineageos/lineagesettings/LineageDatabaseHelper.java": "2a9edf927a83b0e5363f6a24778f7f888e7e00b3b27d73c678b7146c6fc9c0cc"
+    }
+  },
+  {
+    "project": "packages/apps/Eleven",
+    "base_revision": "ee6524a8dd85ce36b0a6d76d95bafa05d9b8efc7",
+    "working_head": "ee6524a8dd85ce36b0a6d76d95bafa05d9b8efc7",
+    "patch": "08-packages-apps-Eleven.patch",
+    "patch_sha256": "73863039767751f1c4fed5458250f5a8fb5328099e76cf35e4f609f807fe3692",
+    "result_files": {
+      "src/org/lineageos/eleven/widgets/PlayPauseButtonContainer.java": "3a9058e632b6f78419bde5642765a24946907395ef54546d4cb9f6569d53f99f",
+      "src/org/lineageos/eleven/widgets/PlayPauseProgressButton.java": "56b8a7aec42d6d5a6703ffb480264a5dd22ee1054fdea4b9158944111039ba65"
+    }
+  },
+  {
+    "project": "packages/apps/Gallery2",
+    "base_revision": "60f463dacfec1dc7351a3a423e4cf1c5c313b2c4",
+    "working_head": "60f463dacfec1dc7351a3a423e4cf1c5c313b2c4",
+    "patch": "09-packages-apps-Gallery2.patch",
+    "patch_sha256": "2cd769ff4ad5eadc78fde71f756d8f2b31891d35d4686b08d99ca50796201fb2",
+    "result_files": {
+      "src/com/android/gallery3d/app/PhotoPage.java": "d3eda4d3b8a4018f68f46b200557f5e9a782c347d9ee0e845e314e85dc4bc86f"
+    }
+  },
+  {
+    "project": "packages/apps/Trebuchet",
+    "base_revision": "af2fcd606fcd6eb3d9818c2ac69faabc8d3ffb2a",
+    "working_head": "af2fcd606fcd6eb3d9818c2ac69faabc8d3ffb2a",
+    "patch": "10-packages-apps-Trebuchet.patch",
+    "patch_sha256": "5d755d361ab1e578493632be3a6e76cb43a11e1b95962a81727d3402b8531d11",
+    "result_files": {
+      "Android.mk": "d6d044fe314366539fb95aea632b0ead25d701451ebddf2a8b53132a7f921064",
+      "go/AndroidManifest.xml": "07c6da9729f177dad1850a7d5cd920884dbb00c7d5758a8ae8e4974ad8d3ce5e",
+      "go/res/xml/device_profiles.xml": "c6e36b04d4d82e45b70107c5b159aab61a94c98273e0c5ff50ce16461c3da37c",
+      "quickstep/src/com/android/launcher3/QuickstepAppTransitionManagerImpl.java": "32f94549a0858e6864e73552182f213829f5c422c4d184dc05cbd5d05e85be38"
+    }
+  },
+  {
+    "project": "system/core",
+    "base_revision": "8d72fbe806789bcbf4b84eeace4ccc92b8640bec",
+    "working_head": "8d72fbe806789bcbf4b84eeace4ccc92b8640bec",
+    "patch": "11-system-core.patch",
+    "patch_sha256": "94be34dc345c869a0b0c148ad3960992a36983d5d09f79985bec1fbf9417eacf",
+    "result_files": {
+      "rootdir/etc/ld.config.vndk_lite.txt": "64e8176ee9e87f24d3a2f752d003d4279cf0104580ae0d0626adf5008184c7ba"
+    }
+  },
+  {
+    "project": "vendor/addons",
+    "base_revision": "659ac52c399b99f92efdd32a99cde97fc821f685",
+    "working_head": "b370444ed32096c911c9031a2fcc16a04f5c4013",
+    "patch": "12-vendor-addons.patch",
+    "patch_sha256": "e9943b61f4cdd35a1eaa58cce10a8d7dbffa1a2244467571a595af369a8c32f9",
+    "result_files": {
+      "themes/navbar/NavigationBarNoHint/AndroidManifest.xml": "7cc412d1ef162bab3d8638fe3a7364e39c1013ea80dab3a0ac30466d1b4fa2b4"
+    }
+  }
+]

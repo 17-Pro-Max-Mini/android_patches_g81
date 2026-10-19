@@ -1,0 +1,15 @@
+diff --git a/rootdir/etc/ld.config.vndk_lite.txt b/rootdir/etc/ld.config.vndk_lite.txt
+index 3e97e2d9a..7e9811da7 100644
+--- a/rootdir/etc/ld.config.vndk_lite.txt
++++ b/rootdir/etc/ld.config.vndk_lite.txt
+@@ -208,6 +208,10 @@ namespace.sphal.link.rs.shared_libs = libRS_internal.so
+ 
+ namespace.sphal.link.default.shared_libs  = %LLNDK_LIBRARIES%
+ namespace.sphal.link.default.shared_libs += %SANITIZER_RUNTIME_LIBRARIES%
++# G81 MT6580 legacy vendor HAL dependencies: expose Oreo GPU/HWC closure from system.
++namespace.sphal.link.default.shared_libs += libhardware.so:libcutils.so:libc++.so:libbacktrace.so
++namespace.sphal.link.default.shared_libs += android.hardware.wifi.supplicant@1.0.so:android.hardware.wifi.supplicant@1.1.so:android.hardware.wifi.supplicant@1.2.so
++namespace.sphal.link.default.shared_libs += android.hardware.graphics.common@1.0.so:android.hardware.graphics.common@1.1.so:android.hardware.graphics.common@1.2.so:android.hardware.graphics.mapper@2.0.so:android.hardware.graphics.mapper@2.1.so:android.hardware.graphics.mapper@3.0.so:android.hidl.memory.token@1.0.so:android.hidl.memory@1.0.so:android.hidl.memory@1.0-impl.so:android.hidl.safe_union@1.0.so:libRSCpuRef.so:libRSDriver.so:libRS_internal.so:libbase.so:libbcinfo.so:libhidlbase.so:libhidlmemory.so:libhidltransport.so:libhwbinder.so:libhwbinder_noltopgo.so:libion.so:libjsoncpp.so:liblzma.so:libprocessgroup.so:libunwindstack.so:libutils.so:libutilscallstack.so
+ 
+ namespace.sphal.link.vndk.shared_libs = %VNDK_SAMEPROCESS_LIBRARIES%
+ 

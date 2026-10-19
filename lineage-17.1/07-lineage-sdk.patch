@@ -1,0 +1,32 @@
+diff --git a/packages/LineageSettingsProvider/res/values/defaults.xml b/packages/LineageSettingsProvider/res/values/defaults.xml
+index 3f14a5ba..2bb7402f 100644
+--- a/packages/LineageSettingsProvider/res/values/defaults.xml
++++ b/packages/LineageSettingsProvider/res/values/defaults.xml
+@@ -27,6 +27,10 @@
+     <!-- Default for LineageSettings.System.SYSTEM_PROFILES_ENABLED -->
+     <bool name="def_profiles_enabled">true</bool>
+ 
++    <!-- Physical camera shutter defaults for G81. -->
++    <bool name="def_camera_wake_screen">true</bool>
++    <bool name="def_camera_launch">true</bool>
++
+     <!-- Defaults for Secure -->
+ 
+     <!-- Default for LineageSettings.Secure.ADVANCED_MODE -->
+diff --git a/packages/LineageSettingsProvider/src/org/lineageos/lineagesettings/LineageDatabaseHelper.java b/packages/LineageSettingsProvider/src/org/lineageos/lineagesettings/LineageDatabaseHelper.java
+index 561ff497..c623ff1f 100644
+--- a/packages/LineageSettingsProvider/src/org/lineageos/lineagesettings/LineageDatabaseHelper.java
++++ b/packages/LineageSettingsProvider/src/org/lineageos/lineagesettings/LineageDatabaseHelper.java
+@@ -561,6 +561,12 @@ public class LineageDatabaseHelper extends SQLiteOpenHelper{
+             loadBooleanSetting(stmt, LineageSettings.System.SYSTEM_PROFILES_ENABLED,
+                     R.bool.def_profiles_enabled);
+ 
++            loadBooleanSetting(stmt, LineageSettings.System.CAMERA_WAKE_SCREEN,
++                    R.bool.def_camera_wake_screen);
++
++            loadBooleanSetting(stmt, LineageSettings.System.CAMERA_LAUNCH,
++                    R.bool.def_camera_launch);
++
+             loadIntegerSetting(stmt, LineageSettings.System.ENABLE_FORWARD_LOOKUP,
+                     R.integer.def_forward_lookup);
+ 

@@ -1,0 +1,553 @@
+diff --git a/packages/SystemUI/res/values/dimens.xml b/packages/SystemUI/res/values/dimens.xml
+index caa910e8b36..b5e0cd01b09 100644
+--- a/packages/SystemUI/res/values/dimens.xml
++++ b/packages/SystemUI/res/values/dimens.xml
+@@ -953,9 +953,21 @@
+     <dimen name="global_actions_translate">9dp</dimen>
+ 
+     <!-- Distance from the top of screen in pixels, to position the power menu near the button. -->
+-    <dimen name="global_actions_top_padding">330px</dimen>
++    <dimen name="global_actions_top_padding">230px</dimen>
+ 
+     <!-- Global actions grid layout -->
++    <!-- Defaults for 307dp devices; values match values-sw320dp. -->
++    <dimen name="global_actions_grid_horizontal_padding">3dp</dimen>
++    <dimen name="global_actions_grid_vertical_padding">3dp</dimen>
++    <dimen name="global_actions_grid_item_width">64dp</dimen>
++    <dimen name="global_actions_grid_item_height">64dp</dimen>
++    <dimen name="global_actions_grid_item_icon_width">20dp</dimen>
++    <dimen name="global_actions_grid_item_icon_height">20dp</dimen>
++    <dimen name="global_actions_grid_item_side_margin">5dp</dimen>
++    <dimen name="global_actions_grid_item_vertical_margin">4dp</dimen>
++    <dimen name="global_actions_grid_item_icon_top_margin">12dp</dimen>
++    <dimen name="global_actions_grid_item_icon_bottom_margin">4dp</dimen>
++    <dimen name="global_actions_grid_item_icon_side_margin">22dp</dimen>
+     <dimen name="global_actions_grid_side_margin">4dp</dimen>
+     <dimen name="global_actions_grid_container_bottom_margin">8dp</dimen>
+ 
+diff --git a/packages/SystemUI/src/com/android/systemui/screenrecord/RecordingService.java b/packages/SystemUI/src/com/android/systemui/screenrecord/RecordingService.java
+index 5a06cefd7ce..755e2a5f80e 100644
+--- a/packages/SystemUI/src/com/android/systemui/screenrecord/RecordingService.java
++++ b/packages/SystemUI/src/com/android/systemui/screenrecord/RecordingService.java
+@@ -75,12 +75,15 @@ import java.nio.ByteBuffer;
+ import java.nio.file.Files;
+ import java.text.SimpleDateFormat;
+ import java.util.Date;
++import java.util.concurrent.ExecutorService;
++import java.util.concurrent.Executors;
+ 
+ /**
+  * A service which records the device screen and optionally microphone input.
+  */
+ public class RecordingService extends Service {
+     private static final int NOTIFICATION_ID = 1;
++    private static final int SAVED_NOTIFICATION_ID = 2;
+     private static final String TAG = "RecordingService";
+     private static final String CHANNEL_ID = "screen_record";
+     private static final String EXTRA_RESULT_CODE = "extra_resultCode";
+@@ -119,11 +122,11 @@ public class RecordingService extends Service {
+     private MediaCodec.BufferInfo mVideoBufferInfo;
+     private int mAudioBufferBytes;
+     private AudioRecord mInternalAudio;
+-    private boolean mMuxerStarted = false;
+-    private boolean mPausedRecording = false;
+-    private boolean mAudioRecording;
+-    private boolean mAudioEncoding;
+-    private boolean mVideoEncoding;
++    private volatile boolean mMuxerStarted = false;
++    private volatile boolean mPausedRecording = false;
++    private volatile boolean mAudioRecording;
++    private volatile boolean mAudioEncoding;
++    private volatile boolean mVideoEncoding;
+     private int videoTrackIndex = -1;
+     private int audioTrackIndex = -1;
+     private final Object mMuxerLock = new Object();
+@@ -143,6 +146,10 @@ public class RecordingService extends Service {
+     private LayoutInflater mInflater;
+     private WindowManager mWindowManager;
+     private File mTempFile;
++    private Thread mVideoEncoderThread, mAudioEncoderThread, mAudioRecorderThread;
++    private boolean mSavingRecording;
++    private final Handler mStartHandler = new Handler(Looper.getMainLooper());
++    private static final ExecutorService SAVE_EXECUTOR = Executors.newSingleThreadExecutor();
+ 
+     /**
+      * Get an intent to start the recording service.
+@@ -178,10 +185,22 @@ public class RecordingService extends Service {
+         NotificationManager notificationManager =
+                 (NotificationManager) getSystemService(Context.NOTIFICATION_SERVICE);
+ 
++        if (ACTION_START.equals(action) && mSavingRecording) {
++            Log.w(TAG, "Ignoring recording start while previous encoders are finalizing");
++            return Service.START_NOT_STICKY;
++        }
+         switch (action) {
+             case ACTION_START:
+                 int resultCode = intent.getIntExtra(EXTRA_RESULT_CODE, Activity.RESULT_CANCELED);
+                 mAudioSourceOpt = intent.getIntExtra(EXTRA_AUDIO_SOURCE, 0 /* disabled*/);
++                // The MT6580 Oreo audio HAL dereferences a null capture provider when
++                // MediaRecorder requests MIC input. Keep screen recording video-only on
++                // this board instead of crashing audioserver and taking down SystemUI.
++                if (mAudioSourceOpt == 2
++                        && "mt6580".equals(SystemProperties.get("ro.board.platform"))) {
++                    Log.w(TAG, "Disabling microphone screen recording on MT6580 audio HAL");
++                    mAudioSourceOpt = 0;
++                }
+                 mShowTaps = intent.getBooleanExtra(EXTRA_SHOW_TAPS, false);
+                 mShowDot = intent.getBooleanExtra(EXTRA_SHOW_DOT, false);
+                 mVideoBitrateOpt = intent.getIntExtra(EXTRA_VIDEO_BITRATE, 2);
+@@ -189,8 +208,8 @@ public class RecordingService extends Service {
+                 Intent data = intent.getParcelableExtra(EXTRA_DATA);
+                 if (data != null) {
+                     mMediaProjection = mMediaProjectionManager.getMediaProjection(resultCode, data);
+-                    final Handler h = new Handler(Looper.getMainLooper());
+-                    h.postDelayed(() -> {
++                    mStartHandler.removeCallbacksAndMessages(null);
++                    mStartHandler.postDelayed(() -> {
+                         startRecording();
+                     }, 500);
+                 }
+@@ -199,28 +218,75 @@ public class RecordingService extends Service {
+             case ACTION_CANCEL:
+                 stopRecording();
+ 
+-                // Delete temp file
+-                if (!mTempFile.delete()) {
+-                    Log.e(TAG, "Error canceling screen recording!");
+-                    Toast.makeText(this, R.string.screenrecord_delete_error, Toast.LENGTH_LONG)
+-                            .show();
++                // A stale notification can outlive the recording service.
++                if (mTempFile != null && mTempFile.exists()) {
++                    if (!mTempFile.delete()) {
++                        Log.e(TAG, "Error canceling screen recording!");
++                        Toast.makeText(this, R.string.screenrecord_delete_error,
++                                Toast.LENGTH_LONG).show();
++                    } else {
++                        Toast.makeText(this, R.string.screenrecord_cancel_success,
++                                Toast.LENGTH_LONG).show();
++                    }
+                 } else {
+-                    Toast.makeText(this, R.string.screenrecord_cancel_success, Toast.LENGTH_LONG)
+-                            .show();
++                    Log.w(TAG, "Ignoring cancel: no temporary recording exists");
+                 }
+ 
+                 // Close quick shade
+                 sendBroadcast(new Intent(Intent.ACTION_CLOSE_SYSTEM_DIALOGS));
++                stopForeground(true);
++                finishCleanupAsync(startId);
+                 break;
+ 
+             case ACTION_STOP:
+-                stopRecording();
+-                saveRecording(notificationManager);
++                boolean recordingStopped = stopRecording();
++                final boolean canSave = recordingStopped && mTempFile != null && mTempFile.exists();
++                if (canSave) {
++                    final File recordingFile = mTempFile;
++                    mTempFile = null;
++                    stopForeground(false);
++                    mSavingRecording = true;
++                    SAVE_EXECUTOR.execute(() -> {
++                        try {
++                            if (awaitEncoderTermination()) {
++                                saveRecording(notificationManager, recordingFile);
++                            } else {
++                                Log.e(TAG, "Encoder cleanup timed out; retaining temporary recording");
++                            }
++                        } finally {
++                            mStartHandler.post(() -> {
++                                mSavingRecording = false;
++                                stopSelf();
++                            });
++                        }
++                    });
++                } else if (mTempFile != null && mTempFile.exists()) {
++                    Log.w(TAG, "Discarding incomplete screen recording after recorder stop failure");
++                    if (!mTempFile.delete()) {
++                        Log.e(TAG, "Failed to delete incomplete screen recording");
++                    }
++                    Toast.makeText(this, R.string.screenrecord_delete_error,
++                            Toast.LENGTH_LONG).show();
++                } else {
++                    Log.w(TAG, "Ignoring stop: no temporary recording exists");
++                }
++                if (!canSave) {
++                    stopForeground(true);
++                    finishCleanupAsync(startId);
++                }
+                 break;
+ 
+             case ACTION_PAUSE:
+                 if (mAudioSourceOpt != 1) {
+-                    mMediaRecorder.pause();
++                    if (mMediaRecorder != null) {
++                        try {
++                            mMediaRecorder.pause();
++                        } catch (IllegalStateException e) {
++                            Log.w(TAG, "Ignoring pause before recorder is started", e);
++                        }
++                    } else {
++                        Log.w(TAG, "Ignoring pause: recorder is not ready");
++                    }
+                 } else {
+                     mPausedRecording = true;
+                 }
+@@ -229,7 +295,15 @@ public class RecordingService extends Service {
+ 
+             case ACTION_RESUME:
+                 if (mAudioSourceOpt != 1) {
+-                    mMediaRecorder.resume();
++                    if (mMediaRecorder != null) {
++                        try {
++                            mMediaRecorder.resume();
++                        } catch (IllegalStateException e) {
++                            Log.w(TAG, "Ignoring resume before recorder is started", e);
++                        }
++                    } else {
++                        Log.w(TAG, "Ignoring resume: recorder is not ready");
++                    }
+                 } else {
+                     mPausedRecording = false;
+                 }
+@@ -248,7 +322,7 @@ public class RecordingService extends Service {
+                 sendBroadcast(new Intent(Intent.ACTION_CLOSE_SYSTEM_DIALOGS));
+ 
+                 // Remove notification
+-                notificationManager.cancel(NOTIFICATION_ID);
++                notificationManager.cancel(SAVED_NOTIFICATION_ID);
+ 
+                 startActivity(Intent.createChooser(shareIntent, shareLabel)
+                                 .setFlags(Intent.FLAG_ACTIVITY_NEW_TASK));
+@@ -267,7 +341,7 @@ public class RecordingService extends Service {
+                         Toast.LENGTH_LONG).show();
+ 
+                 // Remove notification
+-                notificationManager.cancel(NOTIFICATION_ID);
++                notificationManager.cancel(SAVED_NOTIFICATION_ID);
+                 Log.d(TAG, "Deleted recording " + uri);
+                 break;
+         }
+@@ -441,12 +515,17 @@ public class RecordingService extends Service {
+                 case 1:
+                     // Start the encoders
+                     mVideoEncoder.start();
+-                    new Thread(new VideoEncoderTask(), "VideoEncoderTask").start();
++                    mVideoEncoding = true;
++                    mVideoEncoderThread = new Thread(new VideoEncoderTask(), "VideoEncoderTask");
++                    mVideoEncoderThread.start();
+                     mAudioEncoder.start();
+-                    new Thread(new AudioEncoderTask(), "AudioEncoderTask").start();
++                    mAudioEncoding = true;
++                    mAudioEncoderThread = new Thread(new AudioEncoderTask(), "AudioEncoderTask");
++                    mAudioEncoderThread.start();
+                     mInternalAudio.startRecording();
+                     mAudioRecording = true;
+-                    new Thread(new AudioRecorderTask(), "AudioRecorderTask").start();
++                    mAudioRecorderThread = new Thread(new AudioRecorderTask(), "AudioRecorderTask");
++                    mAudioRecorderThread.start();
+                     break;
+ 
+                 default:
+@@ -584,34 +663,97 @@ public class RecordingService extends Service {
+         return builder.build();
+     }
+ 
+-    private void stopRecording() {
++    private boolean stopRecording() {
++        mStartHandler.removeCallbacksAndMessages(null);
+         setTapsVisible(false);
+         if (mDotShowing) {
+             stopDot();
+         }
+-        try {
+-            switch (mAudioSourceOpt) {
+-                case 1:
+-                    mAudioRecording = false;
+-                    mAudioEncoding = false;
+-                    mVideoEncoding = false;
+-                    break;
++        boolean recordingStopped = true;
++        switch (mAudioSourceOpt) {
++            case 1:
++                mAudioRecording = false;
++                mAudioEncoding = false;
++                mVideoEncoding = false;
++                break;
+ 
+-                default:
+-                    mMediaRecorder.stop();
+-                    mMediaRecorder.release();
+-                    mMediaRecorder = null;
+-                    mMediaProjection.stop();
+-                    mMediaProjection = null;
+-                    mInputSurface.release();
+-                    mVirtualDisplay.release();
+-                    break;
++            default:
++                try {
++                    if (mMediaRecorder == null) {
++                        recordingStopped = false;
++                        Log.w(TAG, "Ignoring stop: recorder is not ready");
++                    } else {
++                        mMediaRecorder.stop();
++                    }
++                } catch (RuntimeException e) {
++                    recordingStopped = false;
++                    Log.w(TAG, "Discarding screen recording with no encoded frames", e);
++                } finally {
++                    if (mMediaRecorder != null) {
++                        try {
++                            mMediaRecorder.release();
++                        } catch (RuntimeException e) {
++                            Log.w(TAG, "Error releasing screen recorder", e);
++                        }
++                        mMediaRecorder = null;
++                    }
++                    if (mMediaProjection != null) {
++                        try {
++                            mMediaProjection.stop();
++                        } catch (RuntimeException e) {
++                            Log.w(TAG, "Error stopping media projection", e);
++                        }
++                        mMediaProjection = null;
++                    }
++                    if (mInputSurface != null) {
++                        try {
++                            mInputSurface.release();
++                        } catch (RuntimeException e) {
++                            Log.w(TAG, "Error releasing screen-record surface", e);
++                        }
++                        mInputSurface = null;
++                    }
++                    if (mVirtualDisplay != null) {
++                        try {
++                            mVirtualDisplay.release();
++                        } catch (RuntimeException e) {
++                            Log.w(TAG, "Error releasing recording display", e);
++                        }
++                        mVirtualDisplay = null;
++                    }
++                }
++                break;
++        }
++        return recordingStopped;
++    }
++
++    private boolean awaitEncoderTermination() {
++        for (Thread thread : new Thread[] {
++                mAudioRecorderThread, mAudioEncoderThread, mVideoEncoderThread}) {
++            if (thread == null) continue;
++            try {
++                thread.join(5000);
++            } catch (InterruptedException e) {
++                Thread.currentThread().interrupt();
++                return false;
+             }
+-        } catch (Exception e) {}
+-        stopSelf();
++            if (thread.isAlive()) return false;
++        }
++        return true;
++    }
++
++    private void finishCleanupAsync(int startId) {
++        mSavingRecording = true;
++        SAVE_EXECUTOR.execute(() -> {
++            awaitEncoderTermination();
++            mStartHandler.post(() -> {
++                mSavingRecording = false;
++                stopSelf();
++            });
++        });
+     }
+ 
+-    private void saveRecording(NotificationManager notificationManager) {
++    private void saveRecording(NotificationManager notificationManager, File recordingFile) {
+         String fileName = new SimpleDateFormat("'screenrecord-'yyyyMMdd-HHmmss'.mp4'")
+                 .format(new Date());
+ 
+@@ -624,22 +766,38 @@ public class RecordingService extends Service {
+         ContentResolver resolver = getContentResolver();
+         Uri collectionUri = MediaStore.Video.Media.getContentUri(
+                 MediaStore.VOLUME_EXTERNAL_PRIMARY);
+-        Uri itemUri = resolver.insert(collectionUri, values);
++        values.put(MediaStore.Video.Media.IS_PENDING, 1);
++        Uri itemUri = null;
+ 
+         try {
++            itemUri = resolver.insert(collectionUri, values);
++            if (itemUri == null) throw new IOException("MediaStore rejected recording");
+             // Add to the mediastore
+-            OutputStream os = resolver.openOutputStream(itemUri, "w");
+-            Files.copy(mTempFile.toPath(), os);
+-            os.close();
++            try (OutputStream os = resolver.openOutputStream(itemUri, "w")) {
++                if (os == null) throw new IOException("No output stream for recording");
++                Files.copy(recordingFile.toPath(), os);
++            }
+ 
++            ContentValues published = new ContentValues();
++            published.put(MediaStore.Video.Media.IS_PENDING, 0);
++            resolver.update(itemUri, published, null, null);
+             Notification notification = createSaveNotification(itemUri);
+-            notificationManager.notify(NOTIFICATION_ID, notification);
++            notificationManager.notify(SAVED_NOTIFICATION_ID, notification);
+ 
+-            mTempFile.delete();
+-        } catch (IOException e) {
++            recordingFile.delete();
++            Log.i(TAG, "Saved screen recording on worker thread");
++        } catch (IOException | RuntimeException e) {
+             Log.e(TAG, "Error saving screen recording: " + e.getMessage());
+-            Toast.makeText(this, R.string.screenrecord_delete_error, Toast.LENGTH_LONG)
+-                    .show();
++            if (itemUri != null) {
++                try {
++                    resolver.delete(itemUri, null, null);
++                } catch (RuntimeException cleanupError) {
++                    Log.w(TAG, "Error removing incomplete MediaStore recording", cleanupError);
++                }
++            }
++            new Handler(Looper.getMainLooper()).post(() ->
++                    Toast.makeText(this, R.string.screenrecord_delete_error,
++                            Toast.LENGTH_LONG).show());
+         }
+     }
+ 
+@@ -811,7 +969,6 @@ public class RecordingService extends Service {
+ 
+         @Override
+         public void run(){
+-            mVideoEncoding = true;
+             videoTrackIndex = -1;
+             videoBufferInfo = new MediaCodec.BufferInfo();
+             while(mVideoEncoding){
+@@ -867,6 +1024,10 @@ public class RecordingService extends Service {
+             mVideoEncoder.release();
+             mVideoEncoder = null;
+ 
++            if (mVirtualDisplay != null) {
++                mVirtualDisplay.release();
++                mVirtualDisplay = null;
++            }
+             if (mInputSurface != null) {
+                 mInputSurface.release();
+                 mInputSurface = null;
+@@ -899,7 +1060,7 @@ public class RecordingService extends Service {
+ 
+         @Override
+         public void run(){
+-            mAudioEncoding = true;
++            // The owner enables encoding before starting this thread.
+             audioTrackIndex = -1;
+             audioBufferInfo = new MediaCodec.BufferInfo();
+             while(mAudioEncoding){
+diff --git a/services/core/java/com/android/server/VibratorService.java b/services/core/java/com/android/server/VibratorService.java
+index 9936d73fb80..197118727e0 100644
+--- a/services/core/java/com/android/server/VibratorService.java
++++ b/services/core/java/com/android/server/VibratorService.java
+@@ -390,6 +390,10 @@ public class VibratorService extends IVibratorService.Stub
+         mFallbackEffects.put(VibrationEffect.EFFECT_DOUBLE_CLICK, doubleClickEffect);
+         mFallbackEffects.put(VibrationEffect.EFFECT_TICK, tickEffect);
+         mFallbackEffects.put(VibrationEffect.EFFECT_HEAVY_CLICK, heavyClickEffect);
++        // Legacy HALs can reject POP/THUD as well as the common predefined effects.
++        // Reuse the configured device click patterns when fallback is requested.
++        mFallbackEffects.put(VibrationEffect.EFFECT_POP, clickEffect);
++        mFallbackEffects.put(VibrationEffect.EFFECT_THUD, heavyClickEffect);
+ 
+         mFallbackEffects.put(VibrationEffect.EFFECT_TEXTURE_TICK,
+                 VibrationEffect.get(VibrationEffect.EFFECT_TICK, false));
+diff --git a/services/core/java/com/android/server/display/VirtualDisplayAdapter.java b/services/core/java/com/android/server/display/VirtualDisplayAdapter.java
+index 1ca8dd3af4e..83bb906abbb 100644
+--- a/services/core/java/com/android/server/display/VirtualDisplayAdapter.java
++++ b/services/core/java/com/android/server/display/VirtualDisplayAdapter.java
+@@ -132,6 +132,9 @@ public class VirtualDisplayAdapter extends DisplayAdapter {
+         VirtualDisplayDevice device = mVirtualDisplayDevices.get(appToken);
+         if (device != null) {
+             device.setSurfaceLocked(surface);
++        } else if (surface != null) {
++            // A late binder update still owns its parcel-created Surface reference.
++            surface.release();
+         }
+     }
+ 
+@@ -294,9 +297,16 @@ public class VirtualDisplayAdapter extends DisplayAdapter {
+                     sendDisplayDeviceEventLocked(this, DISPLAY_DEVICE_EVENT_CHANGED);
+                 }
+                 sendTraversalRequestLocked();
++                // The incoming binder parcel transfers a distinct Surface reference.
++                // Release the old reference on replacement/detach, not only on destroy.
++                if (mSurface != null) {
++                    mSurface.release();
++                }
+                 mSurface = surface;
+                 mInfo = null;
+                 mPendingChanges |= PENDING_SURFACE_CHANGE;
++            } else if (mStopped && surface != null && surface != mSurface) {
++                surface.release();
+             }
+         }
+ 
+diff --git a/services/core/java/com/android/server/trust/TrustManagerService.java b/services/core/java/com/android/server/trust/TrustManagerService.java
+index 2394bafc09d..d6a2f4c7db0 100644
+--- a/services/core/java/com/android/server/trust/TrustManagerService.java
++++ b/services/core/java/com/android/server/trust/TrustManagerService.java
+@@ -1466,7 +1466,7 @@ public class TrustManagerService extends SystemService {
+ 
+         private int getUserId(Intent intent) {
+             int userId = intent.getIntExtra(Intent.EXTRA_USER_HANDLE, -100);
+-            if (userId > 0) {
++            if (userId >= 0) {
+                 return userId;
+             } else {
+                 Slog.wtf(TAG, "EXTRA_USER_HANDLE missing or invalid, value=" + userId);
+diff --git a/services/core/java/com/android/server/wm/InputMonitor.java b/services/core/java/com/android/server/wm/InputMonitor.java
+index 9301bf120df..d6d04ebd008 100644
+--- a/services/core/java/com/android/server/wm/InputMonitor.java
++++ b/services/core/java/com/android/server/wm/InputMonitor.java
+@@ -181,7 +181,8 @@ final class InputMonitor {
+     private boolean disposeInputConsumer(InputConsumerImpl consumer) {
+         if (consumer != null) {
+             consumer.disposeChannelsLw();
+-            consumer.hide(mInputTransaction);
++            // Destroyed input consumers no longer own a compositor surface.
++            mInputTransaction.remove(consumer.mInputSurface);
+             return true;
+         }
+         return false;
+diff --git a/services/core/java/com/android/server/wm/TaskSnapshotSurface.java b/services/core/java/com/android/server/wm/TaskSnapshotSurface.java
+index 1905476f472..d498265e4c4 100644
+--- a/services/core/java/com/android/server/wm/TaskSnapshotSurface.java
++++ b/services/core/java/com/android/server/wm/TaskSnapshotSurface.java
+@@ -141,7 +141,6 @@ class TaskSnapshotSurface implements StartingSurface {
+         final Window window = new Window();
+         final IWindowSession session = WindowManagerGlobal.getWindowSession();
+         window.setSession(session);
+-        final SurfaceControl surfaceControl = new SurfaceControl();
+         final Rect tmpRect = new Rect();
+         final DisplayCutout.ParcelableWrapper tmpCutout = new DisplayCutout.ParcelableWrapper();
+         final Rect tmpFrame = new Rect();
+@@ -214,6 +213,7 @@ class TaskSnapshotSurface implements StartingSurface {
+         } catch (RemoteException e) {
+             // Local call.
+         }
++        final SurfaceControl surfaceControl = new SurfaceControl();
+         final TaskSnapshotSurface snapshotSurface = new TaskSnapshotSurface(service, window,
+                 surfaceControl, snapshot, layoutParams.getTitle(), taskDescription, sysUiVis,
+                 windowFlags, windowPrivateFlags, taskBounds,
+@@ -270,6 +270,14 @@ class TaskSnapshotSurface implements StartingSurface {
+             mSession.remove(mWindow);
+         } catch (RemoteException e) {
+             // Local call.
++        } finally {
++            // WMS owns the window lifetime; this object owns its local native references.
++            mSurface.release();
++            mSurfaceControl.release();
++            if (mChildSurfaceControl != null) {
++                mChildSurfaceControl.release();
++                mChildSurfaceControl = null;
++            }
+         }
+     }
+ 

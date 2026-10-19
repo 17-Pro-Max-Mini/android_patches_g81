@@ -1,0 +1,89 @@
+diff --git a/Android.mk b/Android.mk
+index 9a86bdb26..a7076b62c 100644
+--- a/Android.mk
++++ b/Android.mk
+@@ -137,8 +137,12 @@ LOCAL_RESOURCE_DIR := $(LOCAL_PATH)/go/res
+ 
+ LOCAL_PROGUARD_FLAG_FILES := proguard.flags
+ 
+-LOCAL_SDK_VERSION := current
+-LOCAL_MIN_SDK_VERSION := 26
++ifneq (,$(wildcard frameworks/base))
++  LOCAL_PRIVATE_PLATFORM_APIS := true
++else
++  LOCAL_SDK_VERSION := system_current
++  LOCAL_MIN_SDK_VERSION := 26
++endif
+ LOCAL_PACKAGE_NAME := TrebuchetGo
+ LOCAL_PRIVILEGED_MODULE := true
+ LOCAL_PRODUCT_MODULE := true
+diff --git a/go/AndroidManifest.xml b/go/AndroidManifest.xml
+index fae1efffe..5e27ad95f 100644
+--- a/go/AndroidManifest.xml
++++ b/go/AndroidManifest.xml
+@@ -34,7 +34,8 @@
+         android:theme="@style/AppTheme"
+         android:largeHeap="@bool/config_largeHeap"
+         android:restoreAnyVersion="true"
+-        android:supportsRtl="true" >
++        android:supportsRtl="true"
++        tools:replace="android:icon" >
+ 
+         <!-- Activity for handling PinItemRequest is disabled on Android Go. -->
+         <activity android:name="com.android.launcher3.dragndrop.AddItemActivity"
+diff --git a/go/res/xml/device_profiles.xml b/go/res/xml/device_profiles.xml
+index 0fd0eebfb..7976e34a3 100644
+--- a/go/res/xml/device_profiles.xml
++++ b/go/res/xml/device_profiles.xml
+@@ -24,7 +24,7 @@
+         launcher:numFolderRows="4"
+         launcher:numFolderColumns="4"
+         launcher:numHotseatIcons="4"
+-        launcher:defaultLayoutId="@xml/default_workspace_4x4" >
++        launcher:defaultLayoutId="@xml/default_workspace_4x5" >
+ 
+         <display-option
+             launcher:name="Go Device"
+@@ -36,4 +36,4 @@
+ 
+     </grid-option>
+ 
+-</profiles>
+\ No newline at end of file
++</profiles>
+diff --git a/quickstep/src/com/android/launcher3/QuickstepAppTransitionManagerImpl.java b/quickstep/src/com/android/launcher3/QuickstepAppTransitionManagerImpl.java
+index a91410cd9..d705d4613 100644
+--- a/quickstep/src/com/android/launcher3/QuickstepAppTransitionManagerImpl.java
++++ b/quickstep/src/com/android/launcher3/QuickstepAppTransitionManagerImpl.java
+@@ -633,6 +633,15 @@ public abstract class QuickstepAppTransitionManagerImpl extends LauncherAppTrans
+                 new SyncRtSurfaceTransactionApplierCompat(mDragLayer);
+         ValueAnimator unlockAnimator = ValueAnimator.ofFloat(0, 1);
+         unlockAnimator.setDuration(CLOSING_TRANSITION_DURATION_MS);
++        RemoteAnimationTargetSet unlockTargets = new RemoteAnimationTargetSet(targets,
++                MODE_OPENING);
++        unlockTargets.addDependentTransactionApplier(surfaceApplier);
++        unlockAnimator.addListener(new AnimatorListenerAdapter() {
++            @Override
++            public void onAnimationEnd(Animator animation) {
++                unlockTargets.release();
++            }
++        });
+         float cornerRadius = mDeviceProfile.isMultiWindowMode ? 0 :
+                 QuickStepContract.getWindowCornerRadius(mLauncher.getResources());
+         unlockAnimator.addListener(new AnimatorListenerAdapter() {
+@@ -663,6 +672,15 @@ public abstract class QuickstepAppTransitionManagerImpl extends LauncherAppTrans
+         float windowCornerRadius = mDeviceProfile.isMultiWindowMode
+                 ? 0 : getWindowCornerRadius(mLauncher.getResources());
+         closingAnimator.setDuration(duration);
++        RemoteAnimationTargetSet closingTargets = new RemoteAnimationTargetSet(targets,
++                MODE_CLOSING);
++        closingTargets.addDependentTransactionApplier(surfaceApplier);
++        closingAnimator.addListener(new AnimatorListenerAdapter() {
++            @Override
++            public void onAnimationEnd(Animator animation) {
++                closingTargets.release();
++            }
++        });
+         closingAnimator.addUpdateListener(new MultiValueUpdateListener() {
+             FloatProp mDy = new FloatProp(0, mClosingWindowTransY, 0, duration, DEACCEL_1_7);
+             FloatProp mScale = new FloatProp(1f, 1f, 0, duration, DEACCEL_1_7);

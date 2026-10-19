@@ -1,0 +1,164 @@
+diff --git a/libs/gui/bufferqueue/1.0/Conversion.cpp b/libs/gui/bufferqueue/1.0/Conversion.cpp
+index 5cb35933e..3ce94b6b4 100644
+--- a/libs/gui/bufferqueue/1.0/Conversion.cpp
++++ b/libs/gui/bufferqueue/1.0/Conversion.cpp
+@@ -444,37 +444,19 @@ status_t flattenFence(hidl_handle const& fence,
+  */
+ // wrap: Fence -> hidl_handle
+ bool wrapAs(hidl_handle* t, native_handle_t** nh, Fence const& l) {
+-    size_t const baseSize = l.getFlattenedSize();
+-    std::unique_ptr<uint8_t[]> baseBuffer(
+-            new (std::nothrow) uint8_t[baseSize]);
+-    if (!baseBuffer) {
+-        return false;
+-    }
+-
+-    size_t const baseNumFds = l.getFdCount();
+-    std::unique_ptr<int[]> baseFds(
+-            new (std::nothrow) int[baseNumFds]);
+-    if (!baseFds) {
+-        return false;
+-    }
+-
+-    void* buffer = static_cast<void*>(baseBuffer.get());
+-    size_t size = baseSize;
+-    int* fds = static_cast<int*>(baseFds.get());
+-    size_t numFds = baseNumFds;
+-    if (l.flatten(buffer, size, fds, numFds) != NO_ERROR) {
+-        return false;
+-    }
+-
+-    void const* constBuffer = static_cast<void const*>(baseBuffer.get());
+-    size = baseSize;
+-    int const* constFds = static_cast<int const*>(baseFds.get());
+-    numFds = baseNumFds;
+-    if (unflattenFence(t, nh, constBuffer, size, constFds, numFds)
+-            != NO_ERROR) {
++    // Avoid Fence::flatten/unflatten here: the vendor OMX process may resolve
++    // those methods from its Oreo UI ABI.  A HIDL fence is only a borrowed fd,
++    // so a duplicated fd in a one-fd native handle is sufficient.
++    int fd = l.get();
++    int dupFd = fd >= 0 ? ::dup(fd) : -1;
++    *nh = native_handle_create_from_fd(dupFd);
++    if (*nh == nullptr) {
++        if (dupFd >= 0) {
++            ::close(dupFd);
++        }
+         return false;
+     }
+-
++    *t = *nh;
+     return true;
+ }
+ 
+@@ -1398,6 +1380,43 @@ bool wrapAs(
+  *
+  * If `t.fence` has a valid file descriptor, it will be duplicated.
+  */
++// Vendor OMX services on this device load an Oreo-era media/UI ABI next to
++// the Android 10 HIDL bridge.  The normal flatten/unflatten path can then
++// reject an otherwise valid QueueBufferInput (usually while decoding the
++// fence or surface-damage payload).  Keep a narrow fallback which copies the
++// scalar fields and duplicates only the fence fd; damage is intentionally
++// cleared because it is optional for queueing and avoids crossing the legacy
++// Region ABI.
++static bool convertQueueBufferInputDirect(
++        BGraphicBufferProducer::QueueBufferInput* l,
++        HGraphicBufferProducer::QueueBufferInput const& t) {
++    int fd = native_handle_read_fd(t.fence);
++    sp<Fence> fence = Fence::NO_FENCE;
++    if (fd >= 0) {
++        int dupFd = ::dup(fd);
++        if (dupFd < 0) {
++            return false;
++        }
++        fence = new Fence(dupFd);
++    }
++
++    l->timestamp = t.timestamp;
++    l->isAutoTimestamp = static_cast<int>(t.isAutoTimestamp);
++    l->dataSpace = static_cast<android_dataspace_t>(t.dataSpace);
++    l->crop = ::android::Rect(
++            static_cast<int32_t>(t.crop.left),
++            static_cast<int32_t>(t.crop.top),
++            static_cast<int32_t>(t.crop.right),
++            static_cast<int32_t>(t.crop.bottom));
++    l->scalingMode = static_cast<int>(t.scalingMode);
++    l->transform = t.transform;
++    l->stickyTransform = t.stickyTransform;
++    l->fence = fence;
++    l->surfaceDamage.clear();
++    l->getFrameTimestamps = t.getFrameTimestamps;
++    return true;
++}
++
+ bool convertTo(
+         BGraphicBufferProducer::QueueBufferInput* l,
+         HGraphicBufferProducer::QueueBufferInput const& t) {
+@@ -1406,14 +1425,14 @@ bool convertTo(
+     std::unique_ptr<uint8_t[]> baseBuffer(
+             new (std::nothrow) uint8_t[baseSize]);
+     if (!baseBuffer) {
+-        return false;
++        return convertQueueBufferInputDirect(l, t);
+     }
+ 
+     size_t const baseNumFds = getFdCount(t);
+     std::unique_ptr<int[]> baseFds(
+             new (std::nothrow) int[baseNumFds]);
+     if (!baseFds) {
+-        return false;
++        return convertQueueBufferInputDirect(l, t);
+     }
+ 
+     void* buffer = static_cast<void*>(baseBuffer.get());
+@@ -1422,19 +1441,21 @@ bool convertTo(
+     size_t numFds = baseNumFds;
+     native_handle_t* nh;
+     if (flatten(t, &nh, buffer, size, fds, numFds) != NO_ERROR) {
+-        return false;
++        return convertQueueBufferInputDirect(l, t);
+     }
+ 
+     void const* constBuffer = static_cast<void const*>(baseBuffer.get());
+     size = baseSize;
+     int const* constFds = static_cast<int const*>(baseFds.get());
+     numFds = baseNumFds;
+-    if (l->unflatten(constBuffer, size, constFds, numFds) != NO_ERROR) {
++    status_t unflattenStatus = l->unflatten(
++            constBuffer, size, constFds, numFds);
++    if (unflattenStatus != NO_ERROR) {
+         if (nh != nullptr) {
+             native_handle_close(nh);
+             native_handle_delete(nh);
+         }
+-        return false;
++        return convertQueueBufferInputDirect(l, t);
+     }
+ 
+     native_handle_delete(nh);
+@@ -1539,4 +1560,3 @@ BGraphicBufferProducer::DisconnectMode toGuiDisconnectMode(
+ 
+ }  // namespace conversion
+ }  // namespace android
+-
+diff --git a/services/surfaceflinger/DisplayHardware/HWComposer.cpp b/services/surfaceflinger/DisplayHardware/HWComposer.cpp
+index 0cf48aee1..8f59af832 100644
+--- a/services/surfaceflinger/DisplayHardware/HWComposer.cpp
++++ b/services/surfaceflinger/DisplayHardware/HWComposer.cpp
+@@ -188,6 +188,15 @@ bool HWComposer::onVsync(hwc2_display_t hwcDisplayId, int64_t timestamp) {
+     {
+         std::lock_guard lock(displayData.lastHwVsyncLock);
+ 
++        // The legacy MTK HWC2 callback can emit an invalid zero timestamp
++        // during native-window teardown/recreation. Passing it to the
++        // scheduler creates a zero/negative interval and provokes software
++        // VSYNC fallback, which amplifies frame pacing stalls. Discard the
++        // invalid sample and keep the last valid hardware timing model.
++        if (timestamp <= 0) {
++            return false;
++        }
++
+         // There have been reports of HWCs that signal several vsync events
+         // with the same timestamp when turning the display off and on. This
+         // is a bug in the HWC implementation, but filter the extra events

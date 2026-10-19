@@ -1,0 +1,14 @@
+diff --git a/themes/navbar/NavigationBarNoHint/AndroidManifest.xml b/themes/navbar/NavigationBarNoHint/AndroidManifest.xml
+index 11cc290..02556ce 100644
+--- a/themes/navbar/NavigationBarNoHint/AndroidManifest.xml
++++ b/themes/navbar/NavigationBarNoHint/AndroidManifest.xml
+@@ -6,6 +6,8 @@
+         package="org.lineageos.overlay.customization.navbar.nohint"
+         android:versionCode="1"
+         android:versionName="1.0">
++    <!-- SystemUI enables this mutable overlay only for gesture navigation without a hint. -->
+     <overlay android:targetPackage="android"
+-        android:priority="1"/>
++        android:priority="1"
++        android:isStatic="false"/>
+ </manifest>

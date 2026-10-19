@@ -1,0 +1,62 @@
+diff --git a/service/java/com/android/server/wifi/HostapdHal.java b/service/java/com/android/server/wifi/HostapdHal.java
+index 5ac173447..cc4f504a2 100644
+--- a/service/java/com/android/server/wifi/HostapdHal.java
++++ b/service/java/com/android/server/wifi/HostapdHal.java
+@@ -363,6 +363,13 @@ public class HostapdHal {
+                 }
+                 ifaceParams.channelParams.enableAcs = false;
+                 ifaceParams.channelParams.channel = config.apChannel;
++                // Legacy MTK firmware cannot run hostapd ACS. A persisted default
++                // config may still contain channel 0 even when ACS is disabled;
++                // select the standard 2.4 GHz fallback instead of sending 0 to
++                // hostapd (which starts an unsupported survey-based ACS scan).
++                if (ifaceParams.channelParams.channel == 0) {
++                    ifaceParams.channelParams.channel = ApConfigUtil.DEFAULT_AP_CHANNEL;
++                }
+             }
+ 
+             IHostapd.NetworkParams nwParams = new IHostapd.NetworkParams();
+diff --git a/tests/wifitests/src/com/android/server/wifi/HostapdHalTest.java b/tests/wifitests/src/com/android/server/wifi/HostapdHalTest.java
+index 2cf8f222f..49c1f1cfe 100644
+--- a/tests/wifitests/src/com/android/server/wifi/HostapdHalTest.java
++++ b/tests/wifitests/src/com/android/server/wifi/HostapdHalTest.java
+@@ -38,6 +38,7 @@ import android.os.test.TestLooper;
+ import androidx.test.filters.SmallTest;
+ 
+ import com.android.internal.R;
++import com.android.server.wifi.util.ApConfigUtil;
+ import com.android.server.wifi.util.NativeUtil;
+ 
+ import org.junit.Before;
+@@ -463,6 +464,31 @@ public class HostapdHalTest {
+         assertEquals(NETWORK_PSK, mNetworkParamsCaptor.getValue().pskPassphrase);
+     }
+ 
++    /**
++     * Verifies that a zero channel falls back to channel 6 when ACS is disabled.
++     */
++    @Test
++    public void testAddAccessPointZeroChannelFallsBackWithoutACS() throws Exception {
++        mResources.setBoolean(R.bool.config_wifi_softap_acs_supported, false);
++        mHostapdHal = new HostapdHalSpy();
++
++        executeAndValidateInitializationSequence();
++
++        WifiConfiguration configuration = new WifiConfiguration();
++        configuration.SSID = NETWORK_SSID;
++        configuration.hiddenSSID = false;
++        configuration.allowedKeyManagement.set(WifiConfiguration.KeyMgmt.WPA2_PSK);
++        configuration.preSharedKey = NETWORK_PSK;
++        configuration.apChannel = 0;
++        configuration.apBand = WifiConfiguration.AP_BAND_ANY;
++
++        assertTrue(mHostapdHal.addAccessPoint(IFACE_NAME, configuration, mSoftApListener));
++        verify(mIHostapdMock).addAccessPoint(any(), any());
++        assertFalse(mIfaceParamsCaptor.getValue().channelParams.enableAcs);
++        assertEquals(ApConfigUtil.DEFAULT_AP_CHANNEL,
++                mIfaceParamsCaptor.getValue().channelParams.channel);
++    }
++
+     /**
+      * Verifies the successful addition of access point.
+      * Verifies that channel info for ACS is handled.

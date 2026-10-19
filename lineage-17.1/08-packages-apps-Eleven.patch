@@ -1,0 +1,75 @@
+diff --git a/src/org/lineageos/eleven/widgets/PlayPauseButtonContainer.java b/src/org/lineageos/eleven/widgets/PlayPauseButtonContainer.java
+index 8a0ef6f..5475bf6 100644
+--- a/src/org/lineageos/eleven/widgets/PlayPauseButtonContainer.java
++++ b/src/org/lineageos/eleven/widgets/PlayPauseButtonContainer.java
+@@ -46,9 +46,11 @@ public class PlayPauseButtonContainer extends FrameLayout {
+         // Make the play pause button size dependent on the container size
+         int horizontalPadding = getMeasuredWidth() / 4;
+         int verticalPadding = getMeasuredHeight() / 4;
+-        mPlayPauseButton.setPadding(
+-                horizontalPadding, horizontalPadding,
+-                verticalPadding, verticalPadding);
++        if (mPlayPauseButton != null) {
++            mPlayPauseButton.setPadding(
++                    horizontalPadding, horizontalPadding,
++                    verticalPadding, verticalPadding);
++        }
+     }
+ 
+     /**
+@@ -78,6 +80,9 @@ public class PlayPauseButtonContainer extends FrameLayout {
+     }
+ 
+     public void updateState() {
+-        mPlayPauseButton.updateState();
++        // The child can be absent during restored-fragment inflation.
++        if (mPlayPauseButton != null) {
++            mPlayPauseButton.updateState();
++        }
+     }
+ }
+diff --git a/src/org/lineageos/eleven/widgets/PlayPauseProgressButton.java b/src/org/lineageos/eleven/widgets/PlayPauseProgressButton.java
+index 608a905..97879f4 100644
+--- a/src/org/lineageos/eleven/widgets/PlayPauseProgressButton.java
++++ b/src/org/lineageos/eleven/widgets/PlayPauseProgressButton.java
+@@ -62,15 +62,19 @@ public class PlayPauseProgressButton extends FrameLayout {
+         // Make the play pause button size dependent on the container size
+         int horizontalPadding = getMeasuredWidth() / 4;
+         int verticalPadding = getMeasuredHeight() / 4;
+-        mPlayPauseButton.setPadding(
+-                horizontalPadding, horizontalPadding,
+-                verticalPadding, verticalPadding);
++        if (mPlayPauseButton != null) {
++            mPlayPauseButton.setPadding(
++                    horizontalPadding, horizontalPadding,
++                    verticalPadding, verticalPadding);
++        }
+ 
+         // rotate the progress bar 90 degrees counter clockwise so that the
+         // starting position is at the top
+-        mProgressBar.setPivotX(mProgressBar.getMeasuredWidth() / 2f);
+-        mProgressBar.setPivotY(mProgressBar.getMeasuredHeight() / 2f);
+-        mProgressBar.setRotation(-90);
++        if (mProgressBar != null) {
++            mProgressBar.setPivotX(mProgressBar.getMeasuredWidth() / 2f);
++            mProgressBar.setPivotY(mProgressBar.getMeasuredHeight() / 2f);
++            mProgressBar.setRotation(-90);
++        }
+     }
+ 
+     /**
+@@ -140,8 +144,12 @@ public class PlayPauseProgressButton extends FrameLayout {
+             progress = (int) (mProgressBar.getMax() * currentSongProgress / currentSongDuration);
+         }
+ 
+-        mProgressBar.setProgress(progress);
+-        mPlayPauseButton.updateState();
++        if (mProgressBar != null) {
++            mProgressBar.setProgress(progress);
++        }
++        if (mPlayPauseButton != null) {
++            mPlayPauseButton.updateState();
++        }
+     }
+ 
+     /**

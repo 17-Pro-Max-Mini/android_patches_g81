@@ -1,0 +1,12 @@
+diff --git a/src/com/android/gallery3d/app/PhotoPage.java b/src/com/android/gallery3d/app/PhotoPage.java
+index b7e5e511b..02d1e677b 100755
+--- a/src/com/android/gallery3d/app/PhotoPage.java
++++ b/src/com/android/gallery3d/app/PhotoPage.java
+@@ -1429,6 +1429,7 @@ public abstract class PhotoPage extends ActivityState implements
+         try {
+             Intent intent = new Intent(Intent.ACTION_VIEW)
+                     .setDataAndType(uri, "video/*")
++                    .addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                     .putExtra(Intent.EXTRA_TITLE, title)
+                     .putExtra(MovieActivity.KEY_TREAT_UP_AS_BACK, true);
+             activity.startActivityForResult(intent, REQUEST_PLAY_VIDEO);
